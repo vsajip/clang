@@ -1974,6 +1974,23 @@ typedef struct {
 CINDEX_LINKAGE CXType clang_getCursorType(CXCursor C);
 
 /**
+ * \brief Retrieve a constant integer value from a CXCursor
+ * (if appropriate).
+ *
+ * For example, this can be used to:
+ *
+ * * Get the value of an enumeration constant.
+ * * Get the value of a currently unexposed declaration attribute
+ *   (for example, inline or calling convention attributes).
+ * * Get the value of an initializer or bit field width
+ *   from a currently unexposed expression.
+ *
+ * If the cursor is not appropriate for a constant integer value,
+ * zero is returned.
+ */
+CINDEX_LINKAGE long long clang_getConstantIntegerValue(CXCursor C);
+
+/**
  * \determine Determine whether two CXTypes represent the same type.
  *
  * \returns non-zero if the CXTypes represent the same type and 
