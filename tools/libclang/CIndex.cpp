@@ -3271,6 +3271,38 @@ CXString clang_getCursorDisplayName(CXCursor C) {
   
   return clang_getCursorSpelling(C);
 }
+
+long long clang_getConstantIntegerValue(CXCursor C) {
+  long long result = 0;
+
+  if (C.kind == CXCursor_EnumConstantDecl) {
+    Decl * D = getCursorDecl(C);
+
+    if (isa<EnumConstantDecl> (D)) { // this check may not be needed
+      llvm::APSInt Value = static_cast<EnumConstantDecl *> (D)->getInitVal();
+
+      if (Value.isSigned())
+        result = Value.getSExtValue();
+      else
+        result = Value.getZExtValue();
+    }
+  } else if (C.kind == CXCursor_UnexposedAttr) {
+    Attr * A = getCursorAttr(C);
+
+    result = A->getKind();
+  } else if (C.kind == CXCursor_UnexposedExpr) {
+    Expr * E = getCursorExpr(C);
+    CXTranslationUnit tu = getCursorTU(C);
+    ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
+    llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+
+    if (Value.isSigned())
+      result = Value.getSExtValue();
+    else
+      result = Value.getZExtValue();
+  }
+  return result;
+}
   
 CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
   switch (Kind) {
