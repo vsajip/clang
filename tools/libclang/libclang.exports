@@ -91,6 +91,8 @@ clang_getDiagnosticSpelling
 clang_getFile
 clang_getFileName
 clang_getFileTime
+clang_getFunctionArgumentCount
+clang_getFunctionArgumentType
 clang_getIBOutletCollectionType
 clang_getIncludedFile
 clang_getInclusions

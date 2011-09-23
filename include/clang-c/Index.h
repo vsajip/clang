@@ -2079,6 +2079,22 @@ CINDEX_LINKAGE CXType clang_getArrayElementType(CXType T);
 CINDEX_LINKAGE long long clang_getArraySize(CXType T);
 
 /**
+ * \brief Return the number of arguments for a function with a
+ * prototype.
+ *
+ * If an invalid type is passed in, -1 is returned.
+ */
+CINDEX_LINKAGE int clang_getFunctionArgumentCount(CXType T);
+
+/**
+ * \brief Return the type of the i-th argument for a function with a
+ * prototype.
+ *
+ * If an invalid type or index is passed in, an invalid type is returned.
+ */
+CINDEX_LINKAGE CXType clang_getFunctionArgumentType(CXType T, unsigned i);
+
+/**
  * \brief Returns 1 if the base class specified by the cursor with kind
  *   CX_CXXBaseSpecifier is virtual.
  */
