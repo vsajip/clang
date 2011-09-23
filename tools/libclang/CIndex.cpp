@@ -4480,7 +4480,7 @@ void clang_tokenize(CXTranslationUnit TU, CXSourceRange Range,
     }
     CXTokens.push_back(CXTok);
     previousWasAt = Tok.is(tok::at);
-  } while (Lex.getBufferLocation() <= EffectiveBufferEnd);
+  } while (Lex.getBufferLocation() < EffectiveBufferEnd);
 
   if (CXTokens.empty())
     return;
