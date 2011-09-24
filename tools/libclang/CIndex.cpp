@@ -3303,7 +3303,19 @@ long long clang_getConstantIntegerValue(CXCursor C) {
   }
   return result;
 }
-  
+
+int clang_isInlineSpecified(CXCursor C) {
+  int result = false;
+
+  if (C.kind == CXCursor_FunctionDecl) {
+    Decl * D = getCursorDecl(C);
+
+    if (isa<FunctionDecl>(D)) // this check may not be needed
+      result = static_cast<FunctionDecl *>(D)->isInlineSpecified();
+  }
+  return result;
+}
+
 CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
   switch (Kind) {
   case CXCursor_FunctionDecl:
