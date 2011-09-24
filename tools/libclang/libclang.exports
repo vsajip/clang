@@ -132,6 +132,7 @@ clang_isCursorDefinition
 clang_isDeclaration
 clang_isExpression
 clang_isFileMultipleIncludeGuarded
+clang_isInlineSpecified
 clang_isInvalid
 clang_isPODType
 clang_isPreprocessing
