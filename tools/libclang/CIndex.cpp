@@ -3280,11 +3280,13 @@ long long clang_getConstantIntegerValue(CXCursor C) {
 
     if (isa<EnumConstantDecl> (D)) { // this check may not be needed
       llvm::APSInt Value = static_cast<EnumConstantDecl *> (D)->getInitVal();
+      long long mask = Value.getAllOnesValue(Value.getBitWidth()).getZExtValue();
 
       if (Value.isSigned())
         result = Value.getSExtValue();
       else
         result = Value.getZExtValue();
+      result &= mask;
     }
   } else if (C.kind == CXCursor_UnexposedAttr) {
     Attr * A = getCursorAttr(C);
@@ -3295,11 +3297,13 @@ long long clang_getConstantIntegerValue(CXCursor C) {
     CXTranslationUnit tu = getCursorTU(C);
     ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
     llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+    long long mask = Value.getAllOnesValue(Value.getBitWidth()).getZExtValue();
 
     if (Value.isSigned())
       result = Value.getSExtValue();
     else
       result = Value.getZExtValue();
+    result &= mask;
   }
   return result;
 }
