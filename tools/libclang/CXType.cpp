@@ -395,6 +395,9 @@ CXType clang_getArrayElementType(CXType CT) {
     case Type::Vector:
       ET = cast<VectorType> (TP)->getElementType();
       break;
+    case Type::Complex:
+      ET = cast<ComplexType> (TP)->getElementType();
+      break;
     default:
       break;
     }
