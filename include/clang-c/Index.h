@@ -1973,7 +1973,9 @@ enum CXTypeKind {
   CXType_ObjCObjectPointer = 109,
   CXType_FunctionNoProto = 110,
   CXType_FunctionProto = 111,
-  CXType_ConstantArray = 112
+  CXType_ConstantArray = 112,
+  CXType_IncompleteArray = 113,
+  CXType_Vector = 114
 };
 
 /**
