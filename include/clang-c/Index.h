@@ -2105,8 +2105,6 @@ CINDEX_LINKAGE int clang_getFunctionArgumentCount(CXType T);
 CINDEX_LINKAGE CXType clang_getFunctionArgumentType(CXType T, unsigned i);
 
 /**
-=======
->>>>>>> arrays
  * \brief Returns 1 if the base class specified by the cursor with kind
  *   CX_CXXBaseSpecifier is virtual.
  */
