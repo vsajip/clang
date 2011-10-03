@@ -381,7 +381,7 @@ unsigned clang_isPODType(CXType X) {
   return T.isPODType(AU->getASTContext()) ? 1 : 0;
 }
 
-CXType clang_getArrayElementType(CXType CT) {
+CXType clang_getElementType(CXType CT) {
   QualType ET = QualType();
   QualType T = GetQualType(CT);
   const Type *TP = T.getTypePtrOrNull();
