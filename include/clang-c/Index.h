@@ -2050,16 +2050,16 @@ CINDEX_LINKAGE CXType clang_getCursorResultType(CXCursor C);
 CINDEX_LINKAGE unsigned clang_isPODType(CXType T);
 
 /**
- * \brief Return the element type of an array type.
+ * \brief Return the element type of an array, vector or complex type.
  *
- * If a non-array type is passed in, an invalid type is returned.
+ * If an inappropriate type is passed in, an invalid type is returned.
  */
-CINDEX_LINKAGE CXType clang_getArrayElementType(CXType T);
+CINDEX_LINKAGE CXType clang_getElementType(CXType T);
 
 /**
- * \brief Return the the array size of a constant array.
+ * \brief Return the the array size of a constant array or vector type.
  *
- * If a non-array type is passed in, -1 is returned.
+ * If an inappropriate type is passed in, -1 is returned.
  */
 CINDEX_LINKAGE long long clang_getArraySize(CXType T);
 
