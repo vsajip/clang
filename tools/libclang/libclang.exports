@@ -43,7 +43,7 @@ clang_equalRanges
 clang_equalTypes
 clang_executeOnThread
 clang_formatDiagnostic
-clang_getArrayElementType
+clang_getElementType
 clang_getArraySize
 clang_getCString
 clang_getCXTUResourceUsage
