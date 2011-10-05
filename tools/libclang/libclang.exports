@@ -56,6 +56,7 @@ clang_getCompletionChunkCompletionString
 clang_getCompletionChunkKind
 clang_getCompletionChunkText
 clang_getCompletionPriority
+clang_getConstantIntegerValue
 clang_getCursor
 clang_getCursorAvailability
 clang_getCursorCompletionString
