@@ -2008,6 +2008,14 @@ CINDEX_LINKAGE CXType clang_getCursorType(CXCursor C);
 CINDEX_LINKAGE long long clang_getConstantIntegerValue(CXCursor C);
 
 /**
+ * \determine Determine whether a declaration is a function declaration
+ * which specifies inlining.
+ *
+ * \returns true if inlining was specified, else false.
+ */
+CINDEX_LINKAGE int clang_isInlineSpecified(CXCursor C);
+
+/**
  * \determine Determine whether two CXTypes represent the same type.
  *
  * \returns non-zero if the CXTypes represent the same type and 
