@@ -43,6 +43,7 @@ clang_executeOnThread
 clang_formatDiagnostic
 clang_getElementType
 clang_getArraySize
+clang_getBitfieldWidth
 clang_getCString
 clang_getCXTUResourceUsage
 clang_getCXXAccessSpecifier
