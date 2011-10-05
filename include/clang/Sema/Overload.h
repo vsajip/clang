@@ -464,6 +464,7 @@ namespace clang {
     bool isEllipsis() const { return getKind() == EllipsisConversion; }
     bool isAmbiguous() const { return getKind() == AmbiguousConversion; }
     bool isUserDefined() const { return getKind() == UserDefinedConversion; }
+    bool isFailure() const { return isBad() || isAmbiguous(); }
 
     /// Determines whether this conversion sequence has been
     /// initialized.  Most operations should never need to query
@@ -526,7 +527,12 @@ namespace clang {
     
     /// This conversion function template specialization candidate is not 
     /// viable because the final conversion was not an exact match.
-    ovl_fail_final_conversion_not_exact
+    ovl_fail_final_conversion_not_exact,
+
+    /// (CUDA) This candidate was not viable because the callee
+    /// was not accessible from the caller's target (i.e. host->device,
+    /// global->host, device->host).
+    ovl_fail_bad_target
   };
 
   /// OverloadCandidate - A single candidate in an overload set (C++ 13.3).

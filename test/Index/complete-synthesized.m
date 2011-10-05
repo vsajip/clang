@@ -27,7 +27,7 @@
 @dynamic prop3;
 
 - (short)method2 {
-  return prop4;
+  return _prop4;
 }
 
 - (short)method3 {
@@ -35,12 +35,12 @@
 }
 @end
 
-// RUN: c-index-test -code-completion-at=%s:24:1 -Xclang -fobjc-nonfragile-abi -fobjc-default-synthesize-properties %s | FileCheck %s
-// RUN: c-index-test -code-completion-at=%s:30:2 -Xclang -fobjc-nonfragile-abi -fobjc-default-synthesize-properties %s | FileCheck %s
-// RUN: c-index-test -code-completion-at=%s:34:2 -Xclang -fobjc-nonfragile-abi -fobjc-default-synthesize-properties %s | FileCheck %s
+// RUN: c-index-test -code-completion-at=%s:24:1 -fobjc-nonfragile-abi -fobjc-default-synthesize-properties %s | FileCheck %s
+// RUN: c-index-test -code-completion-at=%s:30:2 -fobjc-nonfragile-abi -fobjc-default-synthesize-properties %s | FileCheck %s
+// RUN: c-index-test -code-completion-at=%s:34:2 -fobjc-nonfragile-abi -fobjc-default-synthesize-properties %s | FileCheck %s
 
 // CHECK: NotImplemented:{TypedText _Bool} (50)
 // CHECK: ObjCIvarDecl:{ResultType float}{TypedText _prop2} (35)
 // CHECK-NOT: prop2
 // CHECK-NOT: prop3
-// CHECK: ObjCIvarDecl:{ResultType double}{TypedText prop4} (37)
+// CHECK: ObjCIvarDecl:{ResultType double}{TypedText _prop4} (37)

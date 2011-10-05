@@ -336,6 +336,11 @@ CINDEX_LINKAGE unsigned clang_equalRanges(CXSourceRange range1,
                                           CXSourceRange range2);
 
 /**
+ * \brief Returns non-zero if \arg range is null.
+ */
+int clang_Range_isNull(CXSourceRange range);
+
+/**
  * \brief Retrieve the file, line, column, and offset represented by
  * the given source location.
  *
@@ -1304,8 +1309,10 @@ enum CXCursorKind {
   CXCursor_ObjCSynthesizeDecl            = 37,
   /** \brief An Objective-C @dynamic definition. */
   CXCursor_ObjCDynamicDecl               = 38,
+  /** \brief An access specifier. */
+  CXCursor_CXXAccessSpecifier            = 39,
   CXCursor_FirstDecl                     = CXCursor_UnexposedDecl,
-  CXCursor_LastDecl                      = CXCursor_ObjCDynamicDecl,
+  CXCursor_LastDecl                      = CXCursor_CXXAccessSpecifier,
 
   /* References */
   CXCursor_FirstRef                      = 40, /* Decl references */
@@ -1555,6 +1562,11 @@ CINDEX_LINKAGE CXCursor clang_getTranslationUnitCursor(CXTranslationUnit);
 CINDEX_LINKAGE unsigned clang_equalCursors(CXCursor, CXCursor);
 
 /**
+ * \brief Returns non-zero if \arg cursor is null.
+ */
+int clang_Cursor_isNull(CXCursor);
+
+/**
  * \brief Compute a hash value for the given cursor.
  */
 CINDEX_LINKAGE unsigned clang_hashCursor(CXCursor);
@@ -1668,6 +1680,11 @@ CINDEX_LINKAGE enum CXLanguageKind {
  * \brief Determine the "language" of the entity referred to by a given cursor.
  */
 CINDEX_LINKAGE enum CXLanguageKind clang_getCursorLanguage(CXCursor cursor);
+
+/**
+ * \brief Returns the translation unit that a cursor originated from.
+ */
+CINDEX_LINKAGE CXTranslationUnit clang_Cursor_getTranslationUnit(CXCursor);
 
 
 /**
@@ -2132,7 +2149,8 @@ enum CX_CXXAccessSpecifier {
 
 /**
  * \brief Returns the access control level for the C++ base specifier
- *  represented by a cursor with kind CX_CXXBaseSpecifier.
+ * represented by a cursor with kind CXCursor_CXXBaseSpecifier or
+ * CXCursor_AccessSpecifier.
  */
 CINDEX_LINKAGE enum CX_CXXAccessSpecifier clang_getCXXAccessSpecifier(CXCursor);
 

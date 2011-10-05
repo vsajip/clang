@@ -909,20 +909,22 @@ Sema::TryImplicitConversion(Expr *From, QualType ToType,
 /// explicit user-defined conversions are permitted.
 ExprResult
 Sema::PerformImplicitConversion(Expr *From, QualType ToType,
-                                AssignmentAction Action, bool AllowExplicit) {
+                                AssignmentAction Action, bool AllowExplicit,
+                                bool Diagnose) {
   ImplicitConversionSequence ICS;
-  return PerformImplicitConversion(From, ToType, Action, AllowExplicit, ICS);
+  return PerformImplicitConversion(From, ToType, Action, AllowExplicit, ICS,
+                                   Diagnose);
 }
 
 ExprResult
 Sema::PerformImplicitConversion(Expr *From, QualType ToType,
                                 AssignmentAction Action, bool AllowExplicit,
-                                ImplicitConversionSequence& ICS) {
+                                ImplicitConversionSequence& ICS,
+                                bool Diagnose) {
   // Objective-C ARC: Determine whether we will allow the writeback conversion.
   bool AllowObjCWritebackConversion
     = getLangOptions().ObjCAutoRefCount && 
       (Action == AA_Passing || Action == AA_Sending);
-  
 
   ICS = clang::TryImplicitConversion(*this, From, ToType,
                                      /*SuppressUserConversions=*/false,
@@ -930,6 +932,8 @@ Sema::PerformImplicitConversion(Expr *From, QualType ToType,
                                      /*InOverloadResolution=*/false,
                                      /*CStyle=*/false,
                                      AllowObjCWritebackConversion);
+  if (!Diagnose && ICS.isFailure())
+    return ExprError();
   return PerformImplicitConversion(From, ToType, ICS, Action);
 }
 
@@ -2070,6 +2074,11 @@ bool Sema::IsBlockPointerConversion(QualType FromType, QualType ToType,
        // Argument types are too different. Abort.
        return false;
    }
+   if (LangOpts.ObjCAutoRefCount && 
+       !Context.FunctionTypesMatchOnNSConsumedAttrs(FromFunctionType, 
+                                                    ToFunctionType))
+     return false;
+   
    ConvertedType = ToType;
    return true;
 }
@@ -4045,7 +4054,7 @@ Sema::ConvertToIntegralOrEnumerationType(SourceLocation Loc, Expr *From,
       QualType ConvTy
         = Conversion->getConversionType().getNonReferenceType();
       std::string TypeStr;
-      ConvTy.getAsStringInternal(TypeStr, Context.PrintingPolicy);
+      ConvTy.getAsStringInternal(TypeStr, getPrintingPolicy());
 
       Diag(Loc, ExplicitConvDiag)
         << T << ConvTy
@@ -4210,6 +4219,15 @@ Sema::AddOverloadCandidate(FunctionDecl *Function,
     Candidate.FailureKind = ovl_fail_too_few_arguments;
     return;
   }
+
+  // (CUDA B.1): Check for invalid calls between targets.
+  if (getLangOptions().CUDA)
+    if (const FunctionDecl *Caller = dyn_cast<FunctionDecl>(CurContext))
+      if (CheckCUDATarget(Caller, Function)) {
+        Candidate.Viable = false;
+        Candidate.FailureKind = ovl_fail_bad_target;
+        return;
+      }
 
   // Determine the implicit conversion sequences for each of the
   // arguments.
@@ -6911,6 +6929,17 @@ void DiagnoseBadConversion(Sema &S, OverloadCandidate *Cand, unsigned I) {
     return;
   }
 
+  // Special diagnostic for failure to convert an initializer list, since
+  // telling the user that it has type void is not useful.
+  if (FromExpr && isa<InitListExpr>(FromExpr)) {
+    S.Diag(Fn->getLocation(), diag::note_ovl_candidate_bad_list_argument)
+      << (unsigned) FnKind << FnDesc
+      << (FromExpr ? FromExpr->getSourceRange() : SourceRange())
+      << FromTy << ToTy << (unsigned) isObjectArgument << I+1;
+    MaybeEmitInheritedConstructorNote(S, Fn);
+    return;
+  }
+
   // Diagnose references or pointers to incomplete types differently,
   // since it's far from impossible that the incompleteness triggered
   // the failure.
@@ -7169,6 +7198,21 @@ void DiagnoseBadDeduction(Sema &S, OverloadCandidate *Cand,
   }
 }
 
+/// CUDA: diagnose an invalid call across targets.
+void DiagnoseBadTarget(Sema &S, OverloadCandidate *Cand) {
+  FunctionDecl *Caller = cast<FunctionDecl>(S.CurContext);
+  FunctionDecl *Callee = Cand->Function;
+
+  Sema::CUDAFunctionTarget CallerTarget = S.IdentifyCUDATarget(Caller),
+                           CalleeTarget = S.IdentifyCUDATarget(Callee);
+
+  std::string FnDesc;
+  OverloadCandidateKind FnKind = ClassifyOverloadCandidate(S, Callee, FnDesc);
+
+  S.Diag(Callee->getLocation(), diag::note_ovl_candidate_bad_target)
+      << (unsigned) FnKind << CalleeTarget << CallerTarget;
+}
+
 /// Generates a 'note' diagnostic for an overload candidate.  We've
 /// already generated a primary error at the call site.
 ///
@@ -7228,6 +7272,9 @@ void NoteFunctionCandidate(Sema &S, OverloadCandidate *Cand,
     // those conditions and diagnose them well.
     return S.NoteOverloadCandidate(Fn);
   }
+
+  case ovl_fail_bad_target:
+    return DiagnoseBadTarget(S, Cand);
   }
 }
 
@@ -7556,7 +7603,8 @@ void OverloadCandidateSet::NoteCandidates(Sema &S,
   bool ReportedAmbiguousConversions = false;
 
   SmallVectorImpl<OverloadCandidate*>::iterator I, E;
-  const Diagnostic::OverloadsShown ShowOverloads = S.Diags.getShowOverloads();
+  const DiagnosticsEngine::OverloadsShown ShowOverloads = 
+      S.Diags.getShowOverloads();
   unsigned CandsShown = 0;
   for (I = Cands.begin(), E = Cands.end(); I != E; ++I) {
     OverloadCandidate *Cand = *I;
@@ -7564,7 +7612,7 @@ void OverloadCandidateSet::NoteCandidates(Sema &S,
     // Set an arbitrary limit on the number of candidate functions we'll spam
     // the user with.  FIXME: This limit should depend on details of the
     // candidate list.
-    if (CandsShown >= 4 && ShowOverloads == Diagnostic::Ovl_Best) {
+    if (CandsShown >= 4 && ShowOverloads == DiagnosticsEngine::Ovl_Best) {
       break;
     }
     ++CandsShown;
@@ -7759,6 +7807,11 @@ private:
       return false;
 
     if (FunctionDecl *FunDecl = dyn_cast<FunctionDecl>(Fn)) {
+      if (S.getLangOptions().CUDA)
+        if (FunctionDecl *Caller = dyn_cast<FunctionDecl>(S.CurContext))
+          if (S.CheckCUDATarget(Caller, FunDecl))
+            return false;
+
       QualType ResultTy;
       if (Context.hasSameUnqualifiedType(TargetFunctionType, 
                                          FunDecl->getType()) ||

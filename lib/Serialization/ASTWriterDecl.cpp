@@ -204,6 +204,7 @@ void ASTDeclWriter::VisitTagDecl(TagDecl *D) {
   Record.push_back((unsigned)D->getTagKind()); // FIXME: stable encoding
   Record.push_back(D->isDefinition());
   Record.push_back(D->isEmbeddedInDeclarator());
+  Record.push_back(D->isFreeStanding());
   Writer.AddSourceLocation(D->getRBraceLoc(), Record);
   Record.push_back(D->hasExtInfo());
   if (D->hasExtInfo())
@@ -406,7 +407,6 @@ void ASTDeclWriter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
   // FIXME: stable encoding for in/out/inout/bycopy/byref/oneway
   Record.push_back(D->getObjCDeclQualifier());
   Record.push_back(D->hasRelatedResultType());
-  Record.push_back(D->getNumSelectorArgs());
   Writer.AddTypeRef(D->getResultType(), Record);
   Writer.AddTypeSourceInfo(D->getResultTypeSourceInfo(), Record);
   Writer.AddSourceLocation(D->getLocEnd(), Record);
@@ -414,6 +414,14 @@ void ASTDeclWriter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
   for (ObjCMethodDecl::param_iterator P = D->param_begin(),
                                    PEnd = D->param_end(); P != PEnd; ++P)
     Writer.AddDeclRef(*P, Record);
+
+  Record.push_back(D->SelLocsKind);
+  unsigned NumStoredSelLocs = D->getNumStoredSelLocs();
+  SourceLocation *SelLocs = D->getStoredSelLocs();
+  Record.push_back(NumStoredSelLocs);
+  for (unsigned i = 0; i != NumStoredSelLocs; ++i)
+    Writer.AddSourceLocation(SelLocs[i], Record);
+
   Code = serialization::DECL_OBJC_METHOD;
 }
 
@@ -1343,6 +1351,7 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // getTagKind
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // isDefinition
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // EmbeddedInDeclarator
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsFreeStanding
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // SourceLocation
   Abv->Add(BitCodeAbbrevOp(0));                         // hasExtInfo
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // TypedefNameAnonDecl
@@ -1388,6 +1397,7 @@ void ASTWriter::WriteDeclsBlockAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // getTagKind
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // isDefinition
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // EmbeddedInDeclarator
+  Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::Fixed, 1)); // IsFreeStanding
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // SourceLocation
   Abv->Add(BitCodeAbbrevOp(0));                         // hasExtInfo
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6));   // TypedefNameAnonDecl

@@ -623,8 +623,7 @@ public:
 
   RetainSummary* getCFSummaryCreateRule(const FunctionDecl *FD);
   RetainSummary* getCFSummaryGetRule(const FunctionDecl *FD);
-  RetainSummary* getCFCreateGetRuleSummary(const FunctionDecl *FD, 
-                                           StringRef FName);
+  RetainSummary* getCFCreateGetRuleSummary(const FunctionDecl *FD);
 
   RetainSummary* getPersistentSummary(ArgEffects AE, RetEffect RetEff,
                                       ArgEffect ReceiverEff = DoNothing,
@@ -1000,7 +999,7 @@ RetainSummary* RetainSummaryManager::getSummary(const FunctionDecl *FD) {
         else if (isMakeCollectable(FD, FName))
           S = getUnarySummary(FT, cfmakecollectable);
         else
-          S = getCFCreateGetRuleSummary(FD, FName);
+          S = getCFCreateGetRuleSummary(FD);
 
         break;
       }
@@ -1010,7 +1009,7 @@ RetainSummary* RetainSummaryManager::getSummary(const FunctionDecl *FD) {
         if (isRetain(FD, FName))
           S = getUnarySummary(FT, cfretain);
         else
-          S = getCFCreateGetRuleSummary(FD, FName);
+          S = getCFCreateGetRuleSummary(FD);
 
         break;
       }
@@ -1019,7 +1018,7 @@ RetainSummary* RetainSummaryManager::getSummary(const FunctionDecl *FD) {
       if (cocoa::isRefType(RetTy, "DADisk") ||
           cocoa::isRefType(RetTy, "DADissenter") ||
           cocoa::isRefType(RetTy, "DASessionRef")) {
-        S = getCFCreateGetRuleSummary(FD, FName);
+        S = getCFCreateGetRuleSummary(FD);
         break;
       }
 
@@ -1072,9 +1071,8 @@ RetainSummary* RetainSummaryManager::getSummary(const FunctionDecl *FD) {
 }
 
 RetainSummary*
-RetainSummaryManager::getCFCreateGetRuleSummary(const FunctionDecl *FD,
-                                                StringRef FName) {
-  if (coreFoundation::followsCreateRule(FName))
+RetainSummaryManager::getCFCreateGetRuleSummary(const FunctionDecl *FD) {
+  if (coreFoundation::followsCreateRule(FD))
     return getCFSummaryCreateRule(FD);
 
   return getCFSummaryGetRule(FD);
@@ -1200,7 +1198,8 @@ RetainSummaryManager::updateSummaryFromAnnotations(RetainSummary *&Summ,
   
   // Effects on the parameters.
   unsigned parm_idx = 0;
-  for (ObjCMethodDecl::param_iterator pi=MD->param_begin(), pe=MD->param_end();
+  for (ObjCMethodDecl::param_const_iterator
+         pi=MD->param_begin(), pe=MD->param_end();
        pi != pe; ++pi, ++parm_idx) {
     const ParmVarDecl *pd = *pi;
     if (pd->getAttr<NSConsumedAttr>()) {
@@ -1246,9 +1245,9 @@ RetainSummaryManager::getCommonMethodSummary(const ObjCMethodDecl *MD,
     // Delegates are a frequent form of false positives with the retain
     // count checker.
     unsigned i = 0;
-    for (ObjCMethodDecl::param_iterator I = MD->param_begin(),
+    for (ObjCMethodDecl::param_const_iterator I = MD->param_begin(),
          E = MD->param_end(); I != E; ++I, ++i)
-      if (ParmVarDecl *PD = *I) {
+      if (const ParmVarDecl *PD = *I) {
         QualType Ty = Ctx.getCanonicalType(PD->getType());
         if (Ty.getLocalUnqualifiedType() == Ctx.VoidPtrTy)
           ScratchArgs = AF.add(ScratchArgs, i, StopTracking);
@@ -3436,7 +3435,7 @@ void RetainCountChecker::checkEndPath(EndOfFunctionNodeBuilder &Builder,
   const ProgramState *state = Builder.getState();
   GenericNodeBuilderRefCount Bd(Builder);
   RefBindings B = state->get<RefBindings>();
-  ExplodedNode *Pred = 0;
+  ExplodedNode *Pred = Builder.getPredecessor();
 
   for (RefBindings::iterator I = B.begin(), E = B.end(); I != E; ++I) {
     llvm::tie(Pred, state) = handleAutoreleaseCounts(state, Bd, Pred, Eng,

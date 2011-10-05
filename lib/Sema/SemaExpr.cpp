@@ -41,6 +41,55 @@
 using namespace clang;
 using namespace sema;
 
+/// \brief Determine whether the use of this declaration is valid, without
+/// emitting diagnostics.
+bool Sema::CanUseDecl(NamedDecl *D) {
+  // See if this is an auto-typed variable whose initializer we are parsing.
+  if (ParsingInitForAutoVars.count(D))
+    return false;
+
+  // See if this is a deleted function.
+  if (FunctionDecl *FD = dyn_cast<FunctionDecl>(D)) {
+    if (FD->isDeleted())
+      return false;
+  }
+  return true;
+}
+
+static AvailabilityResult DiagnoseAvailabilityOfDecl(Sema &S,
+                              NamedDecl *D, SourceLocation Loc,
+                              const ObjCInterfaceDecl *UnknownObjCClass) {
+  // See if this declaration is unavailable or deprecated.
+  std::string Message;
+  AvailabilityResult Result = D->getAvailability(&Message);
+  switch (Result) {
+    case AR_Available:
+    case AR_NotYetIntroduced:
+      break;
+            
+    case AR_Deprecated:
+      S.EmitDeprecationWarning(D, Message, Loc, UnknownObjCClass);
+      break;
+            
+    case AR_Unavailable:
+      if (cast<Decl>(S.CurContext)->getAvailability() != AR_Unavailable) {
+        if (Message.empty()) {
+          if (!UnknownObjCClass)
+            S.Diag(Loc, diag::err_unavailable) << D->getDeclName();
+          else
+            S.Diag(Loc, diag::warn_unavailable_fwdclass_message) 
+              << D->getDeclName();
+        }
+        else 
+          S.Diag(Loc, diag::err_unavailable_message) 
+            << D->getDeclName() << Message;
+          S.Diag(D->getLocation(), diag::note_unavailable_here) 
+          << isa<FunctionDecl>(D) << false;
+      }
+      break;
+    }
+    return Result;
+}
 
 /// \brief Determine whether the use of this declaration is valid, and
 /// emit any corresponding diagnostics.
@@ -50,9 +99,6 @@ using namespace sema;
 /// it might warn if a deprecated or unavailable declaration is being
 /// used, or produce an error (and return true) if a C++0x deleted
 /// function is being used.
-///
-/// If IgnoreDeprecated is set to true, this should not warn about deprecated
-/// decls.
 ///
 /// \returns true if there was an error (this declaration cannot be
 /// referenced), false otherwise.
@@ -92,40 +138,22 @@ bool Sema::DiagnoseUseOfDecl(NamedDecl *D, SourceLocation Loc,
       return true;
     }
   }
-
-  // See if this declaration is unavailable or deprecated.
-  std::string Message;
-  switch (D->getAvailability(&Message)) {
-  case AR_Available:
-  case AR_NotYetIntroduced:
-    break;
-
-  case AR_Deprecated:
-    EmitDeprecationWarning(D, Message, Loc, UnknownObjCClass);
-    break;
-
-  case AR_Unavailable:
-    if (cast<Decl>(CurContext)->getAvailability() != AR_Unavailable) {
-      if (Message.empty()) {
-        if (!UnknownObjCClass)
-          Diag(Loc, diag::err_unavailable) << D->getDeclName();
-        else
-          Diag(Loc, diag::warn_unavailable_fwdclass_message) 
-               << D->getDeclName();
-      }
-      else 
-        Diag(Loc, diag::err_unavailable_message) 
-          << D->getDeclName() << Message;
-      Diag(D->getLocation(), diag::note_unavailable_here) 
-        << isa<FunctionDecl>(D) << false;
-    }
-    break;
-  }
+  AvailabilityResult Result =
+    DiagnoseAvailabilityOfDecl(*this, D, Loc, UnknownObjCClass);
 
   // Warn if this is used but marked unused.
   if (D->hasAttr<UnusedAttr>())
     Diag(Loc, diag::warn_used_but_marked_unused) << D->getDeclName();
-
+  // For available enumerator, it will become unavailable/deprecated
+  // if its enum declaration is as such.
+  if (Result == AR_Available)
+    if (const EnumConstantDecl *ECD = dyn_cast<EnumConstantDecl>(D)) {
+      const DeclContext *DC = ECD->getDeclContext();
+      if (const EnumDecl *TheEnumDecl = dyn_cast<EnumDecl>(DC))
+        DiagnoseAvailabilityOfDecl(*this,
+                          const_cast< EnumDecl *>(TheEnumDecl), 
+                          Loc, UnknownObjCClass);
+    }
   return false;
 }
 
@@ -241,10 +269,13 @@ void Sema::DiagnoseSentinelCalls(NamedDecl *D, SourceLocation Loc,
     NullValue = "NULL";
   else
     NullValue = "(void*) 0";
-  
-  Diag(MissingNilLoc, diag::warn_missing_sentinel) 
-    << calleeType
-    << FixItHint::CreateInsertion(MissingNilLoc, ", " + NullValue);
+
+  if (MissingNilLoc.isInvalid())
+    Diag(Loc, diag::warn_missing_sentinel) << calleeType;
+  else
+    Diag(MissingNilLoc, diag::warn_missing_sentinel) 
+      << calleeType
+      << FixItHint::CreateInsertion(MissingNilLoc, ", " + NullValue);
   Diag(D->getLocation(), diag::note_sentinel_here) << calleeType;
 }
 
@@ -1348,6 +1379,20 @@ ExprResult
 Sema::BuildDeclRefExpr(ValueDecl *D, QualType Ty, ExprValueKind VK,
                        const DeclarationNameInfo &NameInfo,
                        const CXXScopeSpec *SS) {
+  if (getLangOptions().CUDA)
+    if (const FunctionDecl *Caller = dyn_cast<FunctionDecl>(CurContext))
+      if (const FunctionDecl *Callee = dyn_cast<FunctionDecl>(D)) {
+        CUDAFunctionTarget CallerTarget = IdentifyCUDATarget(Caller),
+                           CalleeTarget = IdentifyCUDATarget(Callee);
+        if (CheckCUDATarget(CallerTarget, CalleeTarget)) {
+          Diag(NameInfo.getLoc(), diag::err_ref_bad_target)
+            << CalleeTarget << D->getIdentifier() << CallerTarget;
+          Diag(D->getLocation(), diag::note_previous_decl)
+            << D->getIdentifier();
+          return ExprError();
+        }
+      }
+
   MarkDeclarationReferenced(NameInfo.getLoc(), D);
 
   Expr *E = DeclRefExpr::Create(Context,
@@ -1977,7 +2022,7 @@ Sema::PerformObjectMemberConversion(Expr *From,
   SourceRange FromRange = From->getSourceRange();
   SourceLocation FromLoc = FromRange.getBegin();
 
-  ExprValueKind VK = CastCategory(From);
+  ExprValueKind VK = From->getValueKind();
 
   // C++ [class.member.lookup]p8:
   //   [...] Ambiguities can often be resolved by qualifying a name with its
@@ -3228,7 +3273,8 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
                               FunctionDecl *FDecl,
                               const FunctionProtoType *Proto,
                               Expr **Args, unsigned NumArgs,
-                              SourceLocation RParenLoc) {
+                              SourceLocation RParenLoc,
+                              bool IsExecConfig) {
   // Bail out early if calling a builtin with custom typechecking.
   // We don't need to do this in the 
   if (FDecl)
@@ -3240,17 +3286,24 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
   // assignment, to the types of the corresponding parameter, ...
   unsigned NumArgsInProto = Proto->getNumArgs();
   bool Invalid = false;
+  unsigned MinArgs = FDecl ? FDecl->getMinRequiredArguments() : NumArgsInProto;
+  unsigned FnKind = Fn->getType()->isBlockPointerType()
+                       ? 1 /* block */
+                       : (IsExecConfig ? 3 /* kernel function (exec config) */
+                                       : 0 /* function */);
 
   // If too few arguments are available (and we don't have default
   // arguments for the remaining parameters), don't make the call.
   if (NumArgs < NumArgsInProto) {
-    if (!FDecl || NumArgs < FDecl->getMinRequiredArguments()) {
-      Diag(RParenLoc, diag::err_typecheck_call_too_few_args)
-        << Fn->getType()->isBlockPointerType()
-        << NumArgsInProto << NumArgs << Fn->getSourceRange();
+    if (NumArgs < MinArgs) {
+      Diag(RParenLoc, MinArgs == NumArgsInProto
+                        ? diag::err_typecheck_call_too_few_args
+                        : diag::err_typecheck_call_too_few_args_at_least)
+        << FnKind
+        << MinArgs << NumArgs << Fn->getSourceRange();
 
       // Emit the location of the prototype.
-      if (FDecl && !FDecl->getBuiltinID())
+      if (FDecl && !FDecl->getBuiltinID() && !IsExecConfig)
         Diag(FDecl->getLocStart(), diag::note_callee_decl)
           << FDecl;
 
@@ -3264,14 +3317,16 @@ Sema::ConvertArgumentsForCall(CallExpr *Call, Expr *Fn,
   if (NumArgs > NumArgsInProto) {
     if (!Proto->isVariadic()) {
       Diag(Args[NumArgsInProto]->getLocStart(),
-           diag::err_typecheck_call_too_many_args)
-        << Fn->getType()->isBlockPointerType()
+           MinArgs == NumArgsInProto
+             ? diag::err_typecheck_call_too_many_args
+             : diag::err_typecheck_call_too_many_args_at_most)
+        << FnKind
         << NumArgsInProto << NumArgs << Fn->getSourceRange()
         << SourceRange(Args[NumArgsInProto]->getLocStart(),
                        Args[NumArgs-1]->getLocEnd());
 
       // Emit the location of the prototype.
-      if (FDecl && !FDecl->getBuiltinID())
+      if (FDecl && !FDecl->getBuiltinID() && !IsExecConfig)
         Diag(FDecl->getLocStart(), diag::note_callee_decl)
           << FDecl;
       
@@ -3387,6 +3442,10 @@ bool Sema::GatherArgumentsForCall(SourceLocation CallLoc,
         AllArgs.push_back(Arg.take());
       }
     }
+
+    // Check for array bounds violations.
+    for (unsigned i = ArgIx; i != NumArgs; ++i)
+      CheckArrayAccess(Args[i]);
   }
   return Invalid;
 }
@@ -3401,7 +3460,7 @@ static ExprResult rebuildUnknownAnyFunction(Sema &S, Expr *fn);
 ExprResult
 Sema::ActOnCallExpr(Scope *S, Expr *Fn, SourceLocation LParenLoc,
                     MultiExprArg ArgExprs, SourceLocation RParenLoc,
-                    Expr *ExecConfig) {
+                    Expr *ExecConfig, bool IsExecConfig) {
   unsigned NumArgs = ArgExprs.size();
 
   // Since this might be a postfix expression, get rid of ParenListExprs.
@@ -3500,7 +3559,7 @@ Sema::ActOnCallExpr(Scope *S, Expr *Fn, SourceLocation LParenLoc,
     NDecl = cast<MemberExpr>(NakedFn)->getMemberDecl();
 
   return BuildResolvedCallExpr(Fn, NDecl, LParenLoc, Args, NumArgs, RParenLoc,
-                               ExecConfig);
+                               ExecConfig, IsExecConfig);
 }
 
 ExprResult
@@ -3515,7 +3574,8 @@ Sema::ActOnCUDAExecConfigExpr(Scope *S, SourceLocation LLLLoc,
   DeclRefExpr *ConfigDR = new (Context) DeclRefExpr(
       ConfigDecl, ConfigQTy, VK_LValue, LLLLoc);
 
-  return ActOnCallExpr(S, ConfigDR, LLLLoc, ExecConfig, GGGLoc, 0);
+  return ActOnCallExpr(S, ConfigDR, LLLLoc, ExecConfig, GGGLoc, 0,
+                       /*IsExecConfig=*/true);
 }
 
 /// ActOnAsTypeExpr - create a new asType (bitcast) from the arguments.
@@ -3550,7 +3610,7 @@ Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
                             SourceLocation LParenLoc,
                             Expr **Args, unsigned NumArgs,
                             SourceLocation RParenLoc,
-                            Expr *Config) {
+                            Expr *Config, bool IsExecConfig) {
   FunctionDecl *FDecl = dyn_cast_or_null<FunctionDecl>(NDecl);
 
   // Promote the function operand.
@@ -3620,6 +3680,11 @@ Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
       if (!FuncT->getResultType()->isVoidType())
         return ExprError(Diag(LParenLoc, diag::err_kern_type_not_void_return)
             << Fn->getType() << Fn->getSourceRange());
+    } else {
+      // CUDA: Calls to global functions must be configured
+      if (FDecl && FDecl->hasAttr<CUDAGlobalAttr>())
+        return ExprError(Diag(LParenLoc, diag::err_global_call_not_config)
+            << FDecl->getName() << Fn->getSourceRange());
     }
   }
 
@@ -3635,7 +3700,7 @@ Sema::BuildResolvedCallExpr(Expr *Fn, NamedDecl *NDecl,
 
   if (const FunctionProtoType *Proto = dyn_cast<FunctionProtoType>(FuncT)) {
     if (ConvertArgumentsForCall(TheCall, Fn, FDecl, Proto, Args, NumArgs,
-                                RParenLoc))
+                                RParenLoc, IsExecConfig))
       return ExprError();
   } else {
     assert(isa<FunctionNoProtoType>(FuncT) && "Unknown FunctionType!");
@@ -4255,6 +4320,8 @@ Sema::ActOnCastExpr(Scope *S, SourceLocation LParenLoc,
     // Check that there are no default arguments (C++ only).
     CheckExtraCXXDefaultArguments(D);
   }
+
+  checkUnusedDeclAttributes(D);
 
   QualType castType = castTInfo->getType();
   Ty = CreateParsedType(castType, castTInfo);
@@ -5092,25 +5159,6 @@ ExprResult Sema::ActOnConditionalOp(SourceLocation QuestionLoc,
                               OK));
 }
 
-/// ConvertObjCSelfToClassRootType - convet type of 'self' in class method
-/// to pointer to root of method's class.
-static QualType
-ConvertObjCSelfToClassRootType(Sema &S, Expr *selfExpr) {
-  QualType SelfType;
-  if (const ObjCMethodDecl *MD = S.GetMethodIfSelfExpr(selfExpr))
-    if (MD->isClassMethod()) {
-      const ObjCInterfaceDecl *Root = 0;
-      if (const ObjCInterfaceDecl * IDecl = MD->getClassInterface())
-      do {
-        Root = IDecl;
-      } while ((IDecl = IDecl->getSuperClass()));
-      if (Root)
-        SelfType =  S.Context.getObjCObjectPointerType(
-                      S.Context.getObjCInterfaceType(Root)); 
-    }
-  return SelfType;
-}
-
 // checkPointerTypesForAssignment - This is a very tricky routine (despite
 // being closely modeled after the C99 spec:-). The odd characteristic of this
 // routine is it effectively iqnores the qualifiers on the top level pointee.
@@ -5438,7 +5486,7 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
         Kind = CK_BitCast;
         return Compatible;
       }
-      
+
       Kind = CK_BitCast;
       return IncompatiblePointer;
     }
@@ -5486,9 +5534,6 @@ Sema::CheckAssignmentConstraints(QualType LHSType, ExprResult &RHS,
 
   // Conversions to Objective-C pointers.
   if (isa<ObjCObjectPointerType>(LHSType)) {
-    QualType RHSQT = ConvertObjCSelfToClassRootType(*this, RHS.get());
-    if (!RHSQT.isNull())
-      RHSType = RHSQT;
     // A* -> B*
     if (RHSType->isObjCObjectPointerType()) {
       Kind = CK_BitCast;
@@ -5659,7 +5704,8 @@ Sema::CheckTransparentUnionArgumentConstraints(QualType ArgType,
 }
 
 Sema::AssignConvertType
-Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &RHS) {
+Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &RHS,
+                                       bool Diagnose) {
   if (getLangOptions().CPlusPlus) {
     if (!LHSType->isRecordType()) {
       // C++ 5.17p3: If the left operand is not of class type, the
@@ -5667,7 +5713,7 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &RHS) {
       // cv-unqualified type of the left operand.
       ExprResult Res = PerformImplicitConversion(RHS.get(),
                                                  LHSType.getUnqualifiedType(),
-                                                 AA_Assigning);
+                                                 AA_Assigning, Diagnose);
       if (Res.isInvalid())
         return Incompatible;
       Sema::AssignConvertType result = Compatible;
@@ -5681,7 +5727,7 @@ Sema::CheckSingleAssignmentConstraints(QualType LHSType, ExprResult &RHS) {
 
     // FIXME: Currently, we fall through and treat C++ classes like C
     // structures.
-  }  
+  }
 
   // C99 6.5.16.1p1: the left operand is a pointer and the right is
   // a null pointer constant.
@@ -7366,7 +7412,7 @@ void Sema::ConvertPropertyForLValue(ExprResult &LHS, ExprResult &RHS,
     // setter, RHS expression is being passed to the setter argument. So,
     // type conversion (and comparison) is RHS to setter's argument type.
     if (const ObjCMethodDecl *SetterMD = PropRef->getImplicitPropertySetter()) {
-      ObjCMethodDecl::param_iterator P = SetterMD->param_begin();
+      ObjCMethodDecl::param_const_iterator P = SetterMD->param_begin();
       LHSTy = (*P)->getType();
       Consumed = (getLangOptions().ObjCAutoRefCount &&
                   (*P)->hasAttr<NSConsumedAttr>());
@@ -7385,7 +7431,7 @@ void Sema::ConvertPropertyForLValue(ExprResult &LHS, ExprResult &RHS,
     const ObjCMethodDecl *setter
       = PropRef->getExplicitProperty()->getSetterMethodDecl();
     if (setter) {
-      ObjCMethodDecl::param_iterator P = setter->param_begin();
+      ObjCMethodDecl::param_const_iterator P = setter->param_begin();
       LHSTy = (*P)->getType();
       Consumed = (*P)->hasAttr<NSConsumedAttr>();
     }
@@ -9167,7 +9213,7 @@ bool Sema::VerifyIntegerConstantExpression(const Expr *E, llvm::APSInt *Result){
 
   if (EvalResult.Diag &&
       Diags.getDiagnosticLevel(diag::ext_expr_not_ice, EvalResult.DiagLoc)
-          != Diagnostic::Ignored)
+          != DiagnosticsEngine::Ignored)
     Diag(EvalResult.DiagLoc, EvalResult.Diag);
 
   if (Result)
@@ -9603,7 +9649,7 @@ void Sema::DiagnoseAssignmentAsCondition(Expr *E) {
       Selector Sel = ME->getSelector();
 
       // self = [<foo> init...]
-      if (GetMethodIfSelfExpr(Op->getLHS()) && Sel.getNameForSlot(0).startswith("init"))
+      if (isSelfExpr(Op->getLHS()) && Sel.getNameForSlot(0).startswith("init"))
         diagnostic = diag::warn_condition_is_idiomatic_assignment;
 
       // <foo> = [<bar> nextObject]
@@ -10083,7 +10129,7 @@ static ExprResult diagnoseUnknownAnyExpr(Sema &S, Expr *E) {
     d = mem->getMemberDecl();
   } else if (ObjCMessageExpr *msg = dyn_cast<ObjCMessageExpr>(E)) {
     diagID = diag::err_uncasted_call_of_unknown_any;
-    loc = msg->getSelectorLoc();
+    loc = msg->getSelectorStartLoc();
     d = msg->getMethodDecl();
     if (!d) {
       S.Diag(loc, diag::err_uncasted_send_to_unknown_any_method)

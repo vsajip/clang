@@ -742,11 +742,14 @@ bool Parser::isTokIdentifier_in() const {
 ///     objc-type-qualifiers objc-type-qualifier
 ///
 void Parser::ParseObjCTypeQualifierList(ObjCDeclSpec &DS,
-                                        ObjCTypeNameContext Context) {
+                                        Declarator::TheContext Context) {
+  assert(Context == Declarator::ObjCParameterContext ||
+         Context == Declarator::ObjCResultContext);
+
   while (1) {
     if (Tok.is(tok::code_completion)) {
       Actions.CodeCompleteObjCPassingType(getCurScope(), DS, 
-                                          Context == OTN_ParameterType);
+                          Context == Declarator::ObjCParameterContext);
       return cutOffParsing();
     }
     
@@ -779,12 +782,51 @@ void Parser::ParseObjCTypeQualifierList(ObjCDeclSpec &DS,
   }
 }
 
+/// Take all the decl attributes out of the given list and add
+/// them to the given attribute set.
+static void takeDeclAttributes(ParsedAttributes &attrs,
+                               AttributeList *list) {
+  while (list) {
+    AttributeList *cur = list;
+    list = cur->getNext();
+
+    if (!cur->isUsedAsTypeAttr()) {
+      // Clear out the next pointer.  We're really completely
+      // destroying the internal invariants of the declarator here,
+      // but it doesn't matter because we're done with it.
+      cur->setNext(0);
+      attrs.add(cur);
+    }
+  }
+}
+
+/// takeDeclAttributes - Take all the decl attributes from the given
+/// declarator and add them to the given list.
+static void takeDeclAttributes(ParsedAttributes &attrs,
+                               Declarator &D) {
+  // First, take ownership of all attributes.
+  attrs.getPool().takeAllFrom(D.getAttributePool());
+  attrs.getPool().takeAllFrom(D.getDeclSpec().getAttributePool());
+
+  // Now actually move the attributes over.
+  takeDeclAttributes(attrs, D.getDeclSpec().getAttributes().getList());
+  takeDeclAttributes(attrs, D.getAttributes());
+  for (unsigned i = 0, e = D.getNumTypeObjects(); i != e; ++i)
+    takeDeclAttributes(attrs,
+                  const_cast<AttributeList*>(D.getTypeObject(i).getAttrs()));
+}
+
 ///   objc-type-name:
 ///     '(' objc-type-qualifiers[opt] type-name ')'
 ///     '(' objc-type-qualifiers[opt] ')'
 ///
 ParsedType Parser::ParseObjCTypeName(ObjCDeclSpec &DS, 
-                                     ObjCTypeNameContext Context) {
+                                     Declarator::TheContext context,
+                                     ParsedAttributes *paramAttrs) {
+  assert(context == Declarator::ObjCParameterContext ||
+         context == Declarator::ObjCResultContext);
+  assert((paramAttrs != 0) == (context == Declarator::ObjCParameterContext));
+
   assert(Tok.is(tok::l_paren) && "expected (");
 
   SourceLocation LParenLoc = ConsumeParen();
@@ -792,15 +834,30 @@ ParsedType Parser::ParseObjCTypeName(ObjCDeclSpec &DS,
   ObjCDeclContextSwitch ObjCDC(*this);
 
   // Parse type qualifiers, in, inout, etc.
-  ParseObjCTypeQualifierList(DS, Context);
+  ParseObjCTypeQualifierList(DS, context);
 
   ParsedType Ty;
   if (isTypeSpecifierQualifier()) {
-    TypeResult TypeSpec =
-      ParseTypeName(0, Declarator::ObjCPrototypeContext, &DS);
-    if (!TypeSpec.isInvalid())
-      Ty = TypeSpec.get();
-  } else if (Context == OTN_ResultType && Tok.is(tok::identifier)) {
+    // Parse an abstract declarator.
+    DeclSpec declSpec(AttrFactory);
+    declSpec.setObjCQualifiers(&DS);
+    ParseSpecifierQualifierList(declSpec);
+    Declarator declarator(declSpec, context);
+    ParseDeclarator(declarator);
+
+    // If that's not invalid, extract a type.
+    if (!declarator.isInvalidType()) {
+      TypeResult type = Actions.ActOnTypeName(getCurScope(), declarator);
+      if (!type.isInvalid())
+        Ty = type.get();
+
+      // If we're parsing a parameter, steal all the decl attributes
+      // and add them to the decl spec.
+      if (context == Declarator::ObjCParameterContext)
+        takeDeclAttributes(*paramAttrs, declarator);
+    }
+  } else if (context == Declarator::ObjCResultContext &&
+             Tok.is(tok::identifier)) {
     if (!Ident_instancetype)
       Ident_instancetype = PP.getIdentifierInfo("instancetype");
     
@@ -869,7 +926,7 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
   ParsedType ReturnType;
   ObjCDeclSpec DSRet;
   if (Tok.is(tok::l_paren))
-    ReturnType = ParseObjCTypeName(DSRet, OTN_ResultType);
+    ReturnType = ParseObjCTypeName(DSRet, Declarator::ObjCResultContext, 0);
 
   // If attributes exist before the method, parse them.
   ParsedAttributes methodAttrs(AttrFactory);
@@ -915,6 +972,7 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
   }
 
   SmallVector<IdentifierInfo *, 12> KeyIdents;
+  SmallVector<SourceLocation, 12> KeyLocs;
   SmallVector<Sema::ObjCArgInfo, 12> ArgInfos;
   ParseScope PrototypeScope(this,
                             Scope::FunctionPrototypeScope|Scope::DeclScope);
@@ -934,9 +992,12 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
 
     ArgInfo.Type = ParsedType();
     if (Tok.is(tok::l_paren)) // Parse the argument type if present.
-      ArgInfo.Type = ParseObjCTypeName(ArgInfo.DeclSpec, OTN_ParameterType);
+      ArgInfo.Type = ParseObjCTypeName(ArgInfo.DeclSpec,
+                                       Declarator::ObjCParameterContext,
+                                       &paramAttrs);
 
     // If attributes exist before the argument name, parse them.
+    // Regardless, collect all the attributes we've parsed so far.
     ArgInfo.ArgAttrs = 0;
     if (getLang().ObjC2) {
       MaybeParseGNUAttributes(paramAttrs);
@@ -967,6 +1028,7 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
 
     ArgInfos.push_back(ArgInfo);
     KeyIdents.push_back(SelIdent);
+    KeyLocs.push_back(selLoc);
 
     // Make sure the attributes persist.
     allParamAttrs.takeAllFrom(paramAttrs.getPool());
@@ -984,8 +1046,7 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
     }
     
     // Check for another keyword selector.
-    SourceLocation Loc;
-    SelIdent = ParseObjCSelectorPiece(Loc);
+    SelIdent = ParseObjCSelectorPiece(selLoc);
     if (!SelIdent && Tok.isNot(tok::colon))
       break;
     // We have a selector or a colon, continue parsing.
@@ -1028,7 +1089,7 @@ Decl *Parser::ParseObjCMethodDecl(SourceLocation mLoc,
   Decl *Result
        = Actions.ActOnMethodDeclaration(getCurScope(), mLoc, Tok.getLocation(),
                                         mType, DSRet, ReturnType, 
-                                        selLoc, Sel, &ArgInfos[0], 
+                                        KeyLocs, Sel, &ArgInfos[0], 
                                         CParamInfo.data(), CParamInfo.size(),
                                         methodAttrs.getList(),
                                         MethodImplKind, isVariadic, MethodDefinition);
@@ -2159,15 +2220,15 @@ Parser::ParseObjCMessageExpressionBody(SourceLocation LBracLoc,
   SourceLocation Loc;
   IdentifierInfo *selIdent = ParseObjCSelectorPiece(Loc);
 
-  SourceLocation SelectorLoc = Loc;
-
   SmallVector<IdentifierInfo *, 12> KeyIdents;
+  SmallVector<SourceLocation, 12> KeyLocs;
   ExprVector KeyExprs(Actions);
 
   if (Tok.is(tok::colon)) {
     while (1) {
       // Each iteration parses a single keyword argument.
       KeyIdents.push_back(selIdent);
+      KeyLocs.push_back(Loc);
 
       if (Tok.isNot(tok::colon)) {
         Diag(Tok, diag::err_expected_colon);
@@ -2282,24 +2343,26 @@ Parser::ParseObjCMessageExpressionBody(SourceLocation LBracLoc,
   SourceLocation RBracLoc = ConsumeBracket(); // consume ']'
 
   unsigned nKeys = KeyIdents.size();
-  if (nKeys == 0)
+  if (nKeys == 0) {
     KeyIdents.push_back(selIdent);
+    KeyLocs.push_back(Loc);
+  }
   Selector Sel = PP.getSelectorTable().getSelector(nKeys, &KeyIdents[0]);
 
   if (SuperLoc.isValid())
     return Actions.ActOnSuperMessage(getCurScope(), SuperLoc, Sel,
-                                     LBracLoc, SelectorLoc, RBracLoc,
+                                     LBracLoc, KeyLocs, RBracLoc,
                                      MultiExprArg(Actions, 
                                                   KeyExprs.take(),
                                                   KeyExprs.size()));
   else if (ReceiverType)
     return Actions.ActOnClassMessage(getCurScope(), ReceiverType, Sel,
-                                     LBracLoc, SelectorLoc, RBracLoc,
+                                     LBracLoc, KeyLocs, RBracLoc,
                                      MultiExprArg(Actions, 
                                                   KeyExprs.take(), 
                                                   KeyExprs.size()));
   return Actions.ActOnInstanceMessage(getCurScope(), ReceiverExpr, Sel,
-                                      LBracLoc, SelectorLoc, RBracLoc,
+                                      LBracLoc, KeyLocs, RBracLoc,
                                       MultiExprArg(Actions, 
                                                    KeyExprs.take(), 
                                                    KeyExprs.size()));
