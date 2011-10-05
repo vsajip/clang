@@ -3279,7 +3279,67 @@ CXString clang_getCursorDisplayName(CXCursor C) {
   
   return clang_getCursorSpelling(C);
 }
-  
+
+long long clang_getConstantIntegerValue(CXCursor C) {
+  long long result = 0;
+
+  if (C.kind == CXCursor_EnumConstantDecl) {
+    Decl * D = getCursorDecl(C);
+
+    if (isa<EnumConstantDecl> (D)) { // this check may not be needed
+      llvm::APSInt Value = static_cast<EnumConstantDecl *> (D)->getInitVal();
+
+      result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+    }
+  } else if (C.kind == CXCursor_UnexposedAttr) {
+    Attr * A = getCursorAttr(C);
+
+    result = A->getKind();
+  } else if (C.kind == CXCursor_UnexposedExpr) {
+    Expr * E = getCursorExpr(C);
+    CXTranslationUnit tu = getCursorTU(C);
+    ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
+    llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+
+    result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+  }
+  return result;
+}
+
+int clang_isInlineSpecified(CXCursor C) {
+  int result = false;
+
+  if (C.kind == CXCursor_FunctionDecl) {
+    Decl * D = getCursorDecl(C);
+
+    if (isa<FunctionDecl>(D)) // this check may not be needed
+      result = static_cast<FunctionDecl *>(D)->isInlineSpecified();
+  }
+  return result;
+}
+
+int clang_getBitfieldWidth(CXCursor C) {
+  int result = 0;
+
+  if (C.kind == CXCursor_FieldDecl) {
+    Decl * D = getCursorDecl(C);
+
+    if (isa<FieldDecl>(D)) {  // this check may not be needed
+      FieldDecl * FD = static_cast<FieldDecl *>(D);
+
+      if (FD->isBitField()) {
+        Expr * E = FD->getBitWidth();
+        CXTranslationUnit tu = getCursorTU(C);
+        ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
+        llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+
+        result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+      }
+    }
+  }
+  return result;
+}
+
 CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
   switch (Kind) {
   case CXCursor_FunctionDecl:
@@ -3717,6 +3777,8 @@ CXSourceLocation clang_getCursorLocation(CXCursor C) {
 
   Decl *D = getCursorDecl(C);
   SourceLocation Loc = D->getLocation();
+  if (ObjCInterfaceDecl *Class = dyn_cast<ObjCInterfaceDecl>(D))
+    Loc = Class->getClassLoc();
   // FIXME: Multiple variables declared in a single declaration
   // currently lack the information needed to correctly determine their
   // ranges when accounting for the type-specifier.  We use context
@@ -4497,7 +4559,7 @@ static void getTokens(ASTUnit *CXXUnit, SourceRange Range,
     }
     CXTokens.push_back(CXTok);
     previousWasAt = Tok.is(tok::at);
-  } while (Lex.getBufferLocation() <= EffectiveBufferEnd);
+  } while (Lex.getBufferLocation() < EffectiveBufferEnd);
 }
 
 void clang_tokenize(CXTranslationUnit TU, CXSourceRange Range,
