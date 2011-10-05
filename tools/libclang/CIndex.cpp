@@ -3310,6 +3310,28 @@ int clang_isInlineSpecified(CXCursor C) {
   return result;
 }
 
+int clang_getBitfieldWidth(CXCursor C) {
+  int result = 0;
+
+  if (C.kind == CXCursor_FieldDecl) {
+    Decl * D = getCursorDecl(C);
+
+    if (isa<FieldDecl>(D)) {  // this check may not be needed
+      FieldDecl * FD = static_cast<FieldDecl *>(D);
+
+      if (FD->isBitField()) {
+        Expr * E = FD->getBitWidth();
+        CXTranslationUnit tu = getCursorTU(C);
+        ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
+        llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+
+        result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+      }
+    }
+  }
+  return result;
+}
+
 CXString clang_getCursorKindSpelling(enum CXCursorKind Kind) {
   switch (Kind) {
   case CXCursor_FunctionDecl:
