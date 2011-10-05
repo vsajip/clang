@@ -2001,8 +2001,8 @@ CINDEX_LINKAGE CXType clang_getCursorType(CXCursor C);
  * * Get the value of an enumeration constant.
  * * Get the value of a currently unexposed declaration attribute
  *   (for example, inline or calling convention attributes).
- * * Get the value of an initializer or bit field width
- *   from a currently unexposed expression.
+ * * Get the value of an initializer from a currently unexposed
+ *   expression.
  *
  * If the cursor is not appropriate for a constant integer value,
  * zero is returned.
@@ -2016,6 +2016,15 @@ CINDEX_LINKAGE long long clang_getConstantIntegerValue(CXCursor C);
  * \returns true if inlining was specified, else false.
  */
 CINDEX_LINKAGE int clang_isInlineSpecified(CXCursor C);
+
+/**
+ * \brief Retrieve a bit-field width from a CXCursor
+ * (if appropriate).
+ *
+ * If the cursor is for a field declaration of a bitfield,
+ * zero is returned.
+ */
+CINDEX_LINKAGE int clang_getBitfieldWidth(CXCursor C);
 
 /**
  * \determine Determine whether two CXTypes represent the same type.
@@ -2092,16 +2101,16 @@ CINDEX_LINKAGE CXType clang_getCursorResultType(CXCursor C);
 CINDEX_LINKAGE unsigned clang_isPODType(CXType T);
 
 /**
- * \brief Return the element type of an array type.
+ * \brief Return the element type of an array, vector or complex type.
  *
- * If a non-array type is passed in, an invalid type is returned.
+ * If an inappropriate type is passed in, an invalid type is returned.
  */
-CINDEX_LINKAGE CXType clang_getArrayElementType(CXType T);
+CINDEX_LINKAGE CXType clang_getElementType(CXType T);
 
 /**
- * \brief Return the the array size of a constant array.
+ * \brief Return the the array size of a constant array or vector type.
  *
- * If a non-array type is passed in, -1 is returned.
+ * If an inappropriate type is passed in, -1 is returned.
  */
 CINDEX_LINKAGE long long clang_getArraySize(CXType T);
 
