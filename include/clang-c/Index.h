@@ -343,7 +343,7 @@ CINDEX_LINKAGE unsigned clang_equalRanges(CXSourceRange range1,
 /**
  * \brief Returns non-zero if \arg range is null.
  */
-int clang_Range_isNull(CXSourceRange range);
+CINDEX_LINKAGE int clang_Range_isNull(CXSourceRange range);
 
 /**
  * \brief Retrieve the file, line, column, and offset represented by
