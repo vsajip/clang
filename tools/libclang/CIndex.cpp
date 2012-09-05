@@ -3302,11 +3302,14 @@ long long clang_getConstantIntegerValue(CXCursor C) {
     result = A->getKind();
   } else if (C.kind == CXCursor_UnexposedExpr) {
     Expr * E = getCursorExpr(C);
-    CXTranslationUnit tu = getCursorTU(C);
-    ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
-    llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
 
-    result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+    if (E->getType()->isIntegralOrEnumerationType()) {
+      CXTranslationUnit tu = getCursorTU(C);
+      ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
+      llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+
+      result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+    }
   }
   return result;
 }
