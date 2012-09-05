@@ -13,16 +13,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "DiagTool.h"
+#include "DiagnosticNames.h"
 #include "clang/Basic/Diagnostic.h"
 #include "llvm/Support/Format.h"
 #include "llvm/ADT/StringMap.h"
+#include "clang/AST/ASTDiagnostic.h"
+#include "clang/Basic/AllDiagnostics.h"
 
 DEF_DIAGTOOL("list-warnings",
              "List warnings and their corresponding flags",
              ListWarnings)
   
 using namespace clang;
-
+using namespace diagtool;
 
 namespace {
 struct Entry {
@@ -47,16 +50,15 @@ static void printEntries(std::vector<Entry> &entries, llvm::raw_ostream &out) {
 }
 
 int ListWarnings::run(unsigned int argc, char **argv, llvm::raw_ostream &out) {
-  llvm::IntrusiveRefCntPtr<DiagnosticIDs> Diags(new DiagnosticIDs);
-  DiagnosticsEngine D(Diags);
-  
   std::vector<Entry> Flagged, Unflagged;
   llvm::StringMap<std::vector<unsigned> > flagHistogram;
   
-  for (DiagnosticIDs::diag_iterator di = DiagnosticIDs::diags_begin(),
-       de = DiagnosticIDs::diags_end(); di != de; ++di) {
-    
-    unsigned diagID = di.getDiagID();
+  ArrayRef<DiagnosticRecord> AllDiagnostics = getBuiltinDiagnosticsByName();
+
+  for (ArrayRef<DiagnosticRecord>::iterator di = AllDiagnostics.begin(),
+                                            de = AllDiagnostics.end();
+       di != de; ++di) {
+    unsigned diagID = di->DiagID;
     
     if (DiagnosticIDs::isBuiltinNote(diagID))
       continue;
@@ -64,7 +66,7 @@ int ListWarnings::run(unsigned int argc, char **argv, llvm::raw_ostream &out) {
     if (!DiagnosticIDs::isBuiltinWarningOrExtension(diagID))
       continue;
   
-    Entry entry(di.getDiagName(),
+    Entry entry(di->getName(),
                 DiagnosticIDs::getWarningOptionForDiag(diagID));
     
     if (entry.Flag.empty())
@@ -75,9 +77,6 @@ int ListWarnings::run(unsigned int argc, char **argv, llvm::raw_ostream &out) {
     }
   }
   
-  std::sort(Flagged.begin(), Flagged.end());
-  std::sort(Unflagged.begin(), Unflagged.end());
-
   out << "Warnings with flags (" << Flagged.size() << "):\n";
   printEntries(Flagged, out);
   
@@ -99,6 +98,10 @@ int ListWarnings::run(unsigned int argc, char **argv, llvm::raw_ostream &out) {
   out << "  Average number of diagnostics per flag: "
       << llvm::format("%.4g", avgDiagsPerFlag) << '\n';
     
+  out << "  Number in -Wpedantic (not covered by other -W flags): "
+      << flagHistogram.GetOrCreateValue("pedantic").getValue().size()
+      << '\n';
+  
   out << '\n';
   
   return 0;

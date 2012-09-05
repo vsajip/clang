@@ -3,6 +3,8 @@
 @interface A
 @end
 
+@class NSString;
+
 template<typename T, typename U>
 struct is_same {
   static const bool value = false;
@@ -97,8 +99,8 @@ int check_make_weak2[is_same<make_weak<__autoreleasing id>::type, __weak id>::va
 template<typename T>
 struct make_weak_fail {
   typedef T T_type;
-  typedef __weak T_type type; // expected-error{{the type 'T_type' (aka '__weak id') already has retainment attributes set on it}} \
-  // expected-error{{the type 'T_type' (aka '__strong id') already has retainment attributes set on it}}
+  typedef __weak T_type type; // expected-error{{the type 'T_type' (aka '__weak id') is already explicitly ownership-qualified}} \
+  // expected-error{{the type 'T_type' (aka '__strong id') is already explicitly ownership-qualified}}
 };
 
 int check_make_weak_fail0[is_same<make_weak_fail<__weak id>::type, __weak id>::value? 1 : -1]; // expected-note{{in instantiation of template class 'make_weak_fail<__weak id>' requested here}}
@@ -265,4 +267,19 @@ namespace rdar9828157 {
   void test_f(A* ap) {
     float &fr = (f)(ap);  
   }
+}
+
+namespace rdar10862386 {
+  // More deduction with lifetime qualifiers.
+  template <typename T>
+  int testing(const T &) {
+      return 1;
+  }
+
+  void test() {
+     testing(1);
+      testing("hi");
+      testing<NSString *>(@"hi");
+      testing(@"hi");
+ }
 }

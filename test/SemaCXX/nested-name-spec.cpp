@@ -27,10 +27,10 @@ int A::C::cx = 17;
 static int A::C::cx2 = 17; // expected-error{{'static' can}}
 
 class C2 {
-  void m(); // expected-note{{member declaration nearly matches}}
+  void m(); // expected-note{{member declaration does not match because it is not const qualified}}
 
   void f(const int& parm); // expected-note{{type of 1st parameter of member declaration does not match definition ('const int &' vs 'int')}}
-  void f(int) const; // expected-note{{member declaration nearly matches}}
+  void f(int) const; // expected-note{{member declaration does not match because it is const qualified}}
   void f(float);
 
   int x;
@@ -45,7 +45,7 @@ void C2::m() {
 }
 
 namespace B {
-  void ::A::Af() {} // expected-error {{definition or redeclaration of 'Af' not in a namespace enclosing 'A'}}
+  void ::A::Af() {} // expected-error {{cannot define or redeclare 'Af' here because namespace 'B' does not enclose namespace 'A'}}
 }
 
 void f1() {
@@ -93,8 +93,7 @@ void f3() {
 }
 
 // make sure the following doesn't hit any asserts
-void f4(undef::C); // expected-error {{use of undeclared identifier 'undef'}} \
-                      expected-error {{variable has incomplete type 'void'}}
+void f4(undef::C); // expected-error {{use of undeclared identifier 'undef'}}
 
 typedef void C2::f5(int); // expected-error{{typedef declarator cannot be qualified}}
 
@@ -121,7 +120,7 @@ namespace E {
 
 
 class Operators {
-  Operators operator+(const Operators&) const; // expected-note{{member declaration nearly matches}}
+  Operators operator+(const Operators&) const; // expected-note{{member declaration does not match because it is const qualified}}
   operator bool();
 };
 
@@ -143,7 +142,7 @@ namespace A {
   void g(int&); // expected-note{{type of 1st parameter of member declaration does not match definition ('int &' vs 'const int &')}}
 } 
 
-void A::f() {} // expected-error{{out-of-line definition of 'f' does not match any declaration in namespace 'A'}}
+void A::f() {} // expected-error-re{{out-of-line definition of 'f' does not match any declaration in namespace 'A'$}}
 
 void A::g(const int&) { } // expected-error{{out-of-line definition of 'g' does not match any declaration in namespace 'A'}}
 
@@ -160,7 +159,7 @@ namespace N {
   void f();
   // FIXME: if we move this to a separate definition of N, things break!
 }
-void ::global_func2(int) { } // expected-error{{definition or redeclaration of 'global_func2' cannot name the global scope}}
+void ::global_func2(int) { } // expected-warning{{extra qualification on member 'global_func2'}}
 
 void N::f() { } // okay
 
@@ -274,7 +273,8 @@ struct A {
 protected:
   struct B;
   struct B::C; // expected-error {{requires a template parameter list}} \
-               // expected-error {{no struct named 'C'}}
+               // expected-error {{no struct named 'C'}} \
+    // expected-error{{non-friend class member 'C' cannot have a qualified name}}
 };
 
 template<typename T>
@@ -284,4 +284,16 @@ protected:
 };
 template <typename T>
 struct A2<T>::B::C; // expected-error {{no struct named 'C'}}
+}
+
+namespace PR13033 {
+namespace NS {
+ int a; // expected-note {{'NS::a' declared here}}
+ int longer_b; //expected-note {{'NS::longer_b' declared here}}
+}
+
+// Suggest adding a namespace qualifier to both variable names even though one
+// is only a single character long.
+int foobar = a + longer_b; // expected-error {{use of undeclared identifier 'a'; did you mean 'NS::a'?}} \
+                           // expected-error {{use of undeclared identifier 'longer_b'; did you mean 'NS::longer_b'?}}
 }

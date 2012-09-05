@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -Wno-array-bounds -analyze -analyzer-checker=core,experimental.security.ArrayBoundV2 -verify %s
+// RUN: %clang_cc1 -Wno-array-bounds -analyze -analyzer-checker=core,alpha.security.ArrayBoundV2 -verify %s
 
 // Tests doing an out-of-bounds access after the end of an array using:
 // - constant integer index
@@ -134,7 +134,7 @@ void test2_multi_ok(int x) {
 void test3(int x) {
   int buf[100];
   if (x < 0)
-    buf[x] = 1; 
+    buf[x] = 1;
 }
 
 // *** FIXME ***

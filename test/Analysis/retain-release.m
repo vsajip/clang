@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -fblocks -verify %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -fblocks -verify -x objective-c++ %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -fblocks -verify -Wno-objc-root-class %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,osx.coreFoundation.CFRetainRelease,osx.cocoa.ClassRelease,osx.cocoa.RetainCount -analyzer-store=region -fblocks -verify -x objective-c++ -Wno-objc-root-class %s
 
 #if __has_feature(attribute_ns_returns_retained)
 #define NS_RETURNS_RETAINED __attribute__((ns_returns_retained))
@@ -42,6 +42,7 @@ typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
 typedef unsigned int UInt32;
 typedef signed long CFIndex;
+typedef CFIndex CFByteOrder;
 typedef struct {
     CFIndex location;
     CFIndex length;
@@ -114,10 +115,15 @@ typedef struct _NSZone NSZone;
 - (id)retain;
 - (oneway void)release;
 - (id)autorelease;
+- (NSString *)description;
 - (id)init;
-@end  @protocol NSCopying  - (id)copyWithZone:(NSZone *)zone;
-@end  @protocol NSMutableCopying  - (id)mutableCopyWithZone:(NSZone *)zone;
-@end  @protocol NSCoding  - (void)encodeWithCoder:(NSCoder *)aCoder;
+@end
+@protocol NSCopying 
+- (id)copyWithZone:(NSZone *)zone;
+@end
+@protocol NSMutableCopying  - (id)mutableCopyWithZone:(NSZone *)zone;
+@end
+@protocol NSCoding  - (void)encodeWithCoder:(NSCoder *)aCoder;
 @end
 @interface NSObject <NSObject> {}
 + (id)allocWithZone:(NSZone *)zone;
@@ -131,13 +137,26 @@ extern id NSAllocateObject(Class aClass, NSUInteger extraBytes, NSZone *zone);
 typedef struct {
 }
 NSFastEnumerationState;
-@protocol NSFastEnumeration  - (NSUInteger)countByEnumeratingWithState:(NSFastEnumerationState *)state objects:(id *)stackbuf count:(NSUInteger)len;
-@end           @class NSString, NSDictionary;
+@protocol NSFastEnumeration 
+- (NSUInteger)countByEnumeratingWithState:(NSFastEnumerationState *)state objects:(id *)stackbuf count:(NSUInteger)len;
+@end
+@class NSString, NSDictionary;
 @interface NSValue : NSObject <NSCopying, NSCoding>  - (void)getValue:(void *)value;
-@end  @interface NSNumber : NSValue  - (char)charValue;
+@end
+@interface NSNumber : NSValue
+- (char)charValue;
 - (id)initWithInt:(int)value;
-@end   @class NSString;
-@interface NSArray : NSObject <NSCopying, NSMutableCopying, NSCoding, NSFastEnumeration>  - (NSUInteger)count;
++ (NSNumber *)numberWithInt:(int)value;
+@end
+@class NSString;
+@interface NSArray : NSObject <NSCopying, NSMutableCopying, NSCoding, NSFastEnumeration>
+- (NSUInteger)count;
+- (id)initWithObjects:(const id [])objects count:(NSUInteger)cnt;
++ (id)arrayWithObject:(id)anObject;
++ (id)arrayWithObjects:(const id [])objects count:(NSUInteger)cnt;
++ (id)arrayWithObjects:(id)firstObj, ... __attribute__((sentinel(0,1)));
+- (id)initWithObjects:(id)firstObj, ... __attribute__((sentinel(0,1)));
+- (id)initWithArray:(NSArray *)array;
 @end  @interface NSArray (NSArrayCreation)  + (id)array;
 @end       @interface NSAutoreleasePool : NSObject {
 }
@@ -157,8 +176,12 @@ typedef double NSTimeInterval;
 + (id)dataWithBytesNoCopy:(void *)bytes length:(NSUInteger)length;
 + (id)dataWithBytesNoCopy:(void *)bytes length:(NSUInteger)length freeWhenDone:(BOOL)b;
 @end   @class NSLocale, NSDate, NSCalendar, NSTimeZone, NSError, NSArray, NSMutableDictionary;
-@interface NSDictionary : NSObject <NSCopying, NSMutableCopying, NSCoding, NSFastEnumeration>  - (NSUInteger)count;
-@end    @interface NSMutableDictionary : NSDictionary  - (void)removeObjectForKey:(id)aKey;
+@interface NSDictionary : NSObject <NSCopying, NSMutableCopying, NSCoding, NSFastEnumeration>
+- (NSUInteger)count;
++ (id)dictionaryWithObjects:(NSArray *)objects forKeys:(NSArray *)keys;
++ (id)dictionaryWithObjects:(const id [])objects forKeys:(const id <NSCopying> [])keys count:(NSUInteger)cnt;
+@end
+@interface NSMutableDictionary : NSDictionary  - (void)removeObjectForKey:(id)aKey;
 - (void)setObject:(id)anObject forKey:(id)aKey;
 @end  @interface NSMutableDictionary (NSMutableDictionaryCreation)  + (id)dictionaryWithCapacity:(NSUInteger)numItems;
 @end  typedef double CGFloat;
@@ -176,7 +199,7 @@ typedef struct IONotificationPort * IONotificationPortRef;
 typedef void (*IOServiceMatchingCallback)(  void * refcon,  io_iterator_t iterator );
 io_service_t IOServiceGetMatchingService(  mach_port_t masterPort,  CFDictionaryRef matching );
 kern_return_t IOServiceGetMatchingServices(  mach_port_t masterPort,  CFDictionaryRef matching,  io_iterator_t * existing );
-kern_return_t IOServiceAddNotification(  mach_port_t masterPort,  const io_name_t notificationType,  CFDictionaryRef matching,  mach_port_t wakePort,  uintptr_t reference,  io_iterator_t * notification ) __attribute__((deprecated));
+kern_return_t IOServiceAddNotification(  mach_port_t masterPort,  const io_name_t notificationType,  CFDictionaryRef matching,  mach_port_t wakePort,  uintptr_t reference,  io_iterator_t * notification ) __attribute__((deprecated)); // expected-note {{'IOServiceAddNotification' declared here}}
 kern_return_t IOServiceAddMatchingNotification(  IONotificationPortRef notifyPort,  const io_name_t notificationType,  CFDictionaryRef matching,         IOServiceMatchingCallback callback,         void * refCon,  io_iterator_t * notification );
 CFMutableDictionaryRef IOServiceMatching(  const char * name );
 CFMutableDictionaryRef IOServiceNameMatching(  const char * name );
@@ -203,8 +226,10 @@ typedef struct CGLayer *CGLayerRef;
 @end @protocol NSValidatedUserInterfaceItem - (SEL)action;
 @end   @protocol NSUserInterfaceValidations - (BOOL)validateUserInterfaceItem:(id <NSValidatedUserInterfaceItem>)anItem;
 @end  @class NSDate, NSDictionary, NSError, NSException, NSNotification;
+@class NSTextField, NSPanel, NSArray, NSWindow, NSImage, NSButton, NSError;
 @interface NSApplication : NSResponder <NSUserInterfaceValidations> {
 }
+- (void)beginSheet:(NSWindow *)sheet modalForWindow:(NSWindow *)docWindow modalDelegate:(id)modalDelegate didEndSelector:(SEL)didEndSelector contextInfo:(void *)contextInfo;
 @end   enum {
 NSTerminateCancel = 0,         NSTerminateNow = 1,         NSTerminateLater = 2 };
 typedef NSUInteger NSApplicationTerminateReply;
@@ -212,7 +237,7 @@ typedef NSUInteger NSApplicationTerminateReply;
 @end  @class NSAttributedString, NSEvent, NSFont, NSFormatter, NSImage, NSMenu, NSText, NSView, NSTextView;
 @interface NSCell : NSObject <NSCopying, NSCoding> {
 }
-@end @class NSTextField, NSPanel, NSArray, NSWindow, NSImage, NSButton, NSError;
+@end 
 typedef struct {
 }
 CVTimeStamp;
@@ -274,6 +299,9 @@ extern CGColorSpaceRef CGColorSpaceCreateDeviceRGB(void);
 - (void)addObject:(id)object;
 + (id)array;
 @end
+
+// This is how NSMakeCollectable is declared in the OS X 10.8 headers.
+id NSMakeCollectable(CFTypeRef __attribute__((cf_consumed))) __attribute__((ns_returns_retained));
 
 
 //===----------------------------------------------------------------------===//
@@ -671,13 +699,22 @@ void rdar6704930(unsigned char *s, unsigned int length) {
 //===----------------------------------------------------------------------===//
 // <rdar://problem/6257780> clang checker fails to catch use-after-release
 //===----------------------------------------------------------------------===//
-                                 
+
 int rdar_6257780_Case1() {
   NSAutoreleasePool * pool = [[NSAutoreleasePool alloc] init];
   NSArray *array = [NSArray array];
   [array release]; // expected-warning{{Incorrect decrement of the reference count of an object that is not owned at this point by the caller}}
   [pool drain];
   return 0;
+}
+
+//===----------------------------------------------------------------------===//
+// <rdar://problem/10640253> Analyzer is confused about NSAutoreleasePool -allocWithZone:.
+//===----------------------------------------------------------------------===//
+
+void rdar_10640253_autorelease_allocWithZone() {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool allocWithZone:(NSZone*)0] init];
+    (void) pool;
 }
 
 //===----------------------------------------------------------------------===//
@@ -719,7 +756,7 @@ typedef CFTypeRef OtherRef;
 @end
 
 //===----------------------------------------------------------------------===//
-//<rdar://problem/6320065> false positive - init method returns an object
+// <rdar://problem/6320065> false positive - init method returns an object
 // owned by caller
 //===----------------------------------------------------------------------===//
 
@@ -791,8 +828,8 @@ int RDar6320065_test() {
 @end
 
 void test_RDar6859457(RDar6859457 *x, void *bytes, NSUInteger dataLength) {
-  [x NoCopyString]; // no-warning
-  [x noCopyString]; // no-warning
+  [x NoCopyString]; // expected-warning{{leak}}
+  [x noCopyString]; // expected-warning{{leak}}
   [NSData dataWithBytesNoCopy:bytes length:dataLength];  // no-warning
   [NSData dataWithBytesNoCopy:bytes length:dataLength freeWhenDone:1]; // no-warning
 }
@@ -1027,9 +1064,13 @@ typedef struct _opaque_pthread_t *__darwin_pthread_t;
 typedef struct _opaque_pthread_attr_t __darwin_pthread_attr_t;
 typedef __darwin_pthread_t pthread_t;
 typedef __darwin_pthread_attr_t pthread_attr_t;
+typedef unsigned long __darwin_pthread_key_t;
+typedef __darwin_pthread_key_t pthread_key_t;
 
 int pthread_create(pthread_t *, const pthread_attr_t *,
                    void *(*)(void *), void *);
+
+int pthread_setspecific(pthread_key_t key, const void *value);
 
 void *rdar_7299394_start_routine(void *p) {
   [((id) p) release];
@@ -1041,6 +1082,16 @@ void rdar_7299394(pthread_attr_t *attr, pthread_t *thread, void *args) {
 }
 void rdar_7299394_positive(pthread_attr_t *attr, pthread_t *thread) {
   NSNumber *number = [[NSNumber alloc] initWithInt:5]; // expected-warning{{leak}}
+}
+
+//===----------------------------------------------------------------------===//
+// <rdar://problem/11282706> false positive with not understanding thread
+// local storage
+//===----------------------------------------------------------------------===//
+
+void rdar11282706(pthread_key_t key) {
+  NSNumber *number = [[NSNumber alloc] initWithInt:5]; // no-warning
+  pthread_setspecific(key, (void*) number);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1263,6 +1314,11 @@ void testattr2_b() {
   TestOwnershipAttr *x = [[TestOwnershipAttr alloc] pseudoInit];  // expected-warning{{leak}}
 }
 
+void testattr2_b_11358224_self_assign_looses_the_leak() {
+  TestOwnershipAttr *x = [[TestOwnershipAttr alloc] pseudoInit];// expected-warning{{leak}}
+  x = x;
+}
+
 void testattr2_c() {
   TestOwnershipAttr *x = [[TestOwnershipAttr alloc] pseudoInit]; // no-warning
   [x release];
@@ -1399,8 +1455,7 @@ void test_blocks_1_indirect_release_via_call(void) {
 }
 
 void test_blocks_1_indirect_retain_via_call(void) {
-  // Eventually this should be reported as a leak.
-  NSNumber *number = [[NSNumber alloc] initWithInt:5]; // no-warning
+  NSNumber *number = [[NSNumber alloc] initWithInt:5]; // expected-warning {{leak}}
   ^(NSObject *o){ [o retain]; }(number);
 }
 
@@ -1458,7 +1513,7 @@ static void rdar_8724287(CFErrorRef error)
     while (error_to_dump != ((void*)0)) {
         CFDictionaryRef info;
 
-        info = CFErrorCopyUserInfo(error_to_dump); // expected-warning{{Potential leak of an object allocated on line}}
+        info = CFErrorCopyUserInfo(error_to_dump); // expected-warning{{Potential leak of an object}}
 
         if (info != ((void*)0)) {
         }
@@ -1602,5 +1657,244 @@ void rdar10232019_positive() {
 
   NSString *otherString = [string stringByAppendingString:@"bar"]; // expected-warning {{Reference-counted object is used after it is release}}
   NSLog(@"%@", otherString);
+}
+
+// RetainCountChecker support for XPC.
+// <rdar://problem/9658496>
+typedef void * xpc_object_t;
+xpc_object_t _CFXPCCreateXPCObjectFromCFObject(CFTypeRef cf);
+void xpc_release(xpc_object_t object);
+
+void rdar9658496() {
+  CFStringRef cf;
+  xpc_object_t xpc;
+  cf = CFStringCreateWithCString( ((CFAllocatorRef)0), "test", kCFStringEncodingUTF8 ); // no-warning
+  xpc = _CFXPCCreateXPCObjectFromCFObject( cf );
+  CFRelease(cf);
+  xpc_release(xpc);
+}
+
+// Support annotations with method families.
+@interface RDar10824732 : NSObject
+- (id)initWithObj:(id CF_CONSUMED)obj;
+@end
+
+@implementation RDar10824732
+- (id)initWithObj:(id)obj {
+  [obj release];
+  return [super init];
+}
+@end
+
+void rdar_10824732() {
+  @autoreleasepool {
+    NSString *obj = @"test";
+    RDar10824732 *foo = [[RDar10824732 alloc] initWithObj:obj]; // no-warning
+    [foo release];
+  }
+}
+
+// Stop tracking objects passed to functions, which take callbacks as parameters.
+// radar://10973977
+typedef int (*CloseCallback) (void *);
+void ReaderForIO(CloseCallback ioclose, void *ioctx);
+int IOClose(void *context);
+
+@protocol SInS <NSObject>
+@end
+
+@interface radar10973977 : NSObject
+- (id<SInS>)inputS;
+- (void)reader;
+@end
+
+@implementation radar10973977
+- (void)reader
+{
+    id<SInS> inputS = [[self inputS] retain];
+    ReaderForIO(IOClose, inputS);
+}
+- (id<SInS>)inputS
+{
+    return 0;
+}
+@end
+
+// Object escapes through a selector callback: radar://11398514
+extern id NSApp;
+@interface MySheetController
+- (id<SInS>)inputS;
+- (void)showDoSomethingSheetAction:(id)action;
+- (void)sheetDidEnd:(NSWindow *)sheet returnCode:(int)returnCode contextInfo:(void *)contextInfo;
+@end
+
+@implementation MySheetController
+- (id<SInS>)inputS {
+    return 0;
+}
+- (void)showDoSomethingSheetAction:(id)action {
+  id<SInS> inputS = [[self inputS] retain]; 
+  [NSApp beginSheet:0
+         modalForWindow:0
+         modalDelegate:0
+         didEndSelector:@selector(sheetDidEnd:returnCode:contextInfo:)
+         contextInfo:(void *)inputS]; // no - warning
+}
+- (void)sheetDidEnd:(NSWindow *)sheet returnCode:(int)returnCode contextInfo:(void *)contextInfo {
+   
+      id contextObject = (id)contextInfo;
+      [contextObject release];
+}
+@end
+//===----------------------------------------------------------------------===//
+// Test returning allocated memory in a struct.
+//
+// We currently don't have a general way to track pointers that "escape".
+// Here we test that RetainCountChecker doesn't get excited about returning
+// allocated CF objects in struct fields.
+//===----------------------------------------------------------------------===//
+void *malloc(size_t);
+struct rdar11104566 { CFStringRef myStr; };
+struct rdar11104566 test_rdar11104566() {
+  CFStringRef cf = CFStringCreateWithCString( ((CFAllocatorRef)0), "test", kCFStringEncodingUTF8 ); // no-warning
+  struct rdar11104566 V;
+  V.myStr = cf;
+  return V; // no-warning
+}
+
+struct rdar11104566 *test_2_rdar11104566() {
+  CFStringRef cf = CFStringCreateWithCString( ((CFAllocatorRef)0), "test", kCFStringEncodingUTF8 ); // no-warning
+  struct rdar11104566 *V = (struct rdar11104566 *) malloc(sizeof(*V));
+  V->myStr = cf;
+  return V; // no-warning
+}
+
+//===----------------------------------------------------------------------===//
+// ObjC literals support.
+//===----------------------------------------------------------------------===//
+
+void test_objc_arrays() {
+    { // CASE ONE -- OBJECT IN ARRAY CREATED DIRECTLY
+        NSObject *o = [[NSObject alloc] init];
+        NSArray *a = [[NSArray alloc] initWithObjects:o, (void*)0]; // expected-warning {{leak}}
+        [o release];
+        [a description];
+        [o description];
+    }
+
+    { // CASE TWO -- OBJECT IN ARRAY CREATED BY DUPING AUTORELEASED ARRAY
+        NSObject *o = [[NSObject alloc] init];
+        NSArray *a1 = [NSArray arrayWithObjects:o, (void*)0];
+        NSArray *a2 = [[NSArray alloc] initWithArray:a1]; // expected-warning {{leak}}
+        [o release];        
+        [a2 description];
+        [o description];
+    }
+
+    { // CASE THREE -- OBJECT IN RETAINED @[]
+        NSObject *o = [[NSObject alloc] init];
+        NSArray *a3 = [@[o] retain]; // expected-warning {{leak}}
+        [o release];        
+        [a3 description];
+        [o description];
+    }
+    
+    { // CASE FOUR -- OBJECT IN ARRAY CREATED BY DUPING @[]
+        NSObject *o = [[NSObject alloc] init];
+        NSArray *a = [[NSArray alloc] initWithArray:@[o]]; // expected-warning {{leak}}
+        [o release];
+        
+        [a description];
+        [o description];
+    }
+    
+    { // CASE FIVE -- OBJECT IN RETAINED @{}
+        NSValue *o = [[NSValue alloc] init];
+        NSDictionary *a = [@{o : o} retain]; // expected-warning {{leak}}
+        [o release];
+        
+        [a description];
+        [o description];
+    }
+}
+
+void test_objc_integer_literals() {
+  id value = [@1 retain]; // expected-warning {{leak}}
+  [value description];
+}
+
+void test_objc_boxed_expressions(int x, const char *y) {
+  id value = [@(x) retain]; // expected-warning {{leak}}
+  [value description];
+
+  value = [@(y) retain]; // expected-warning {{leak}}
+  [value description];
+}
+
+// Test NSLog doesn't escape tracked objects.
+void rdar11400885(int y)
+{
+  @autoreleasepool {
+    NSString *printString;
+    if(y > 2)
+      printString = [[NSString alloc] init];
+    else
+      printString = [[NSString alloc] init];
+    NSLog(@"Once %@", printString);
+    [printString release];
+    NSLog(@"Again: %@", printString); // expected-warning {{Reference-counted object is used after it is released}}
+  }
+}
+
+id makeCollectableNonLeak() {
+  extern CFTypeRef CFCreateSomething();
+
+  CFTypeRef object = CFCreateSomething(); // +1
+  CFRetain(object); // +2
+  id objCObject = NSMakeCollectable(object); // +2
+  [objCObject release]; // +1
+  return [objCObject autorelease]; // +0
+}
+
+
+void consumeAndStopTracking(id NS_CONSUMED obj, void (^callback)(void));
+void CFConsumeAndStopTracking(CFTypeRef CF_CONSUMED obj, void (^callback)(void));
+
+void testConsumeAndStopTracking() {
+  id retained = [@[] retain]; // +1
+  consumeAndStopTracking(retained, ^{}); // no-warning
+
+  id doubleRetained = [[@[] retain] retain]; // +2
+  consumeAndStopTracking(doubleRetained, ^{
+    [doubleRetained release];
+  }); // no-warning
+
+  id unretained = @[]; // +0
+  consumeAndStopTracking(unretained, ^{}); // expected-warning {{Incorrect decrement of the reference count of an object that is not owned at this point by the caller}}
+}
+
+void testCFConsumeAndStopTracking() {
+  id retained = [@[] retain]; // +1
+  CFConsumeAndStopTracking((CFTypeRef)retained, ^{}); // no-warning
+
+  id doubleRetained = [[@[] retain] retain]; // +2
+  CFConsumeAndStopTracking((CFTypeRef)doubleRetained, ^{
+    [doubleRetained release];
+  }); // no-warning
+
+  id unretained = @[]; // +0
+  CFConsumeAndStopTracking((CFTypeRef)unretained, ^{}); // expected-warning {{Incorrect decrement of the reference count of an object that is not owned at this point by the caller}}
+}
+//===----------------------------------------------------------------------===//
+// Test 'pragma clang arc_cf_code_audited' support.
+//===----------------------------------------------------------------------===//
+
+typedef void *MyCFType;
+#pragma clang arc_cf_code_audited begin
+MyCFType CreateMyCFType();
+#pragma clang arc_cf_code_audited end 
+    
+void test_custom_cf() {
+  MyCFType x = CreateMyCFType(); // expected-warning {{leak of an object stored into 'x'}}
 }
 

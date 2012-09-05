@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -fobjc-fragile-abi -emit-llvm -o - %s | FileCheck %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -fobjc-runtime=macosx-fragile-10.5 -emit-llvm -o - %s | FileCheck %s
 
 // rdar://problem/9158302
 // This should not use a memmove_collectable in non-GC mode.
@@ -13,8 +13,6 @@ namespace test0 {
   // CHECK-NEXT: store
   // CHECK-NEXT: call noalias i8* @_Znwm(
   // CHECK-NEXT: bitcast
-  // CHECK-NEXT: bitcast
-  // CHECK-NEXT: call void @llvm.memset.p0i8.i64(
   // CHECK-NEXT: bitcast
   // CHECK-NEXT: bitcast
   // CHECK-NEXT: call void @llvm.memcpy.p0i8.p0i8.i64(

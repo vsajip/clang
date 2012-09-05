@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -I%S %s -triple x86_64-apple-darwin10 -emit-llvm -fcxx-exceptions -fexceptions -std=c++0x -o - | FileCheck %s
+// RUN: %clang_cc1 -I%S %s -triple x86_64-apple-darwin10 -emit-llvm -fcxx-exceptions -fexceptions -std=c++11 -o - | FileCheck %s
 struct A { virtual ~A(); };
 struct B final : A { };
 struct C { virtual ~C(); int c; };
@@ -16,4 +16,9 @@ C &f(B& b) {
   // CHECK: call void @__cxa_bad_cast() noreturn
   // CHECK: ret %struct.C* undef
   return dynamic_cast<C&>(b);
+}
+
+void dont_crash() {
+  (void) dynamic_cast<void*>((A*)0);
+  (void) dynamic_cast<void*>((B*)0);
 }

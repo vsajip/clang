@@ -3,12 +3,15 @@ set(LLVM_LINK_COMPONENTS mc)
 add_clang_library(clangBasic
   Builtins.cpp
   ConvertUTF.c
+  ConvertUTFWrapper.cpp
   Diagnostic.cpp
   DiagnosticIDs.cpp
   FileManager.cpp
   FileSystemStatCache.cpp
   IdentifierTable.cpp
   LangOptions.cpp
+  Module.cpp
+  ObjCRuntime.cpp
   SourceLocation.cpp
   SourceManager.cpp
   TargetInfo.cpp
@@ -30,17 +33,19 @@ if (Subversion_FOUND AND EXISTS "${CLANG_SOURCE_DIR}/.svn")
     PROPERTIES COMPILE_DEFINITIONS "SVN_REVISION=\"${CLANG_WC_REVISION}\"")
 endif()
 
-add_dependencies(clangBasic 
-                 ClangARMNeon
-                 ClangAttrList
-                 ClangDiagnosticAnalysis
-                 ClangDiagnosticAST
-                 ClangDiagnosticCommon
-                 ClangDiagnosticDriver
-                 ClangDiagnosticFrontend
-                 ClangDiagnosticGroups
-                 ClangDiagnosticLex
-                 ClangDiagnosticParse
-                 ClangDiagnosticSema
-                 ClangDiagnosticIndexName)
-                 
+add_dependencies(clangBasic
+  ClangARMNeon
+  ClangAttrList
+  ClangDiagnosticAnalysis
+  ClangDiagnosticAST
+  ClangDiagnosticComment
+  ClangDiagnosticCommon
+  ClangDiagnosticDriver
+  ClangDiagnosticFrontend
+  ClangDiagnosticGroups
+  ClangDiagnosticIndexName
+  ClangDiagnosticLex
+  ClangDiagnosticParse
+  ClangDiagnosticSema
+  ClangDiagnosticSerialization
+  )

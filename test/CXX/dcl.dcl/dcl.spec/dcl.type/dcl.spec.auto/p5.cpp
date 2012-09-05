@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -fsyntax-only -verify %s -std=c++0x
+// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -fsyntax-only -verify %s -std=c++11
 
 struct S {
   virtual ~S();
@@ -60,9 +60,8 @@ int ints[] = {1, 2, 3};
 template <const auto (*a)[3] = &ints> class D { }; // expected-error{{'auto' not allowed in template parameter}}
 enum E : auto {}; // expected-error{{'auto' not allowed here}}
 struct F : auto {}; // expected-error{{expected class name}}
-template<typename T = auto> struct G { }; // expected-error{{'auto' not allowed here}}
+template<typename T = auto> struct G { }; // expected-error{{'auto' not allowed in template argument}}
 
 using A = auto; // expected-error{{'auto' not allowed in type alias}}
 
-// FIXME: don't issue the second diagnostic for this error.
-auto k() -> auto; // expected-error{{'auto' not allowed here}} unexpected-error{{without trailing return type}}
+auto k() -> auto; // expected-error{{'auto' not allowed in function return type}}

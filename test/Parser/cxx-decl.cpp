@@ -1,4 +1,6 @@
-// RUN: %clang_cc1 -verify -fsyntax-only %s
+// RUN: %clang_cc1 -verify -fsyntax-only -triple i386-linux -pedantic %s
+
+const char const *x10; // expected-warning {{duplicate 'const' declaration specifier}}
 
 int x(*g); // expected-error {{use of undeclared identifier 'g'}}
 
@@ -44,7 +46,7 @@ class asm_class_test {
   void foo() __asm__("baz");
 };
 
-enum { fooenum = 1 };
+enum { fooenum = 1, }; // expected-warning {{commas at the end of enumerator lists are a C++11 extension}}
 
 struct a {
   int Type : fooenum;
@@ -65,6 +67,36 @@ struct test4 {
   int y;
   int z  // expected-error {{expected ';' at end of declaration list}}
 };
+
+// Make sure we know these are legitimate commas and not typos for ';'.
+namespace Commas {
+  struct S {
+    static int a;
+    int c,
+    operator()();
+  };
+
+  int global1,
+  __attribute__(()) global2,
+  (global5),
+  *global6,
+  &global7 = global1,
+  &&global8 = static_cast<int&&>(global1), // expected-warning 2{{rvalue reference}}
+  S::a,
+  global9,
+  global10 = 0,
+  global11 == 0, // expected-error {{did you mean '='}}
+  global12 __attribute__(()),
+  global13(0),
+  global14[2],
+  global15;
+
+  void g() {
+    static int a,
+    b __asm__("ebx"), // expected-error {{expected ';' at end of declaration}}
+    Statics:return;
+  }
+}
 
 // PR5825
 struct test5 {};
@@ -89,11 +121,12 @@ void CodeCompleteConsumer::() { // expected-error {{xpected unqualified-id}}
 
 ;
 
+// PR4111
+void f(sqrgl); // expected-error {{unknown type name 'sqrgl'}}
+
 // PR8380
 extern ""      // expected-error {{unknown linkage language}}
 test6a { ;// expected-error {{C++ requires a type specifier for all declarations}} \
      // expected-error {{expected ';' after top level declarator}}
   
   int test6b;
-  
-  

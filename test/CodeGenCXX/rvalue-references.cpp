@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -triple x86_64-apple-darwin10 -emit-llvm -o - %s | FileCheck %s
+// RUN: %clang_cc1 -std=c++11 -triple x86_64-apple-darwin10 -emit-llvm -o - %s | FileCheck %s
 
 
 struct Spacer { int x; };
@@ -10,7 +10,7 @@ B &getB();
 // CHECK: define %struct.A* @_Z4getAv()
 // CHECK: call %struct.B* @_Z4getBv()
 // CHECK-NEXT: bitcast %struct.B*
-// CHECK-NEXT: getelementptr i8*
+// CHECK-NEXT: getelementptr inbounds i8*
 // CHECK-NEXT: bitcast i8* {{.*}} to %struct.A*
 // CHECK-NEXT: ret %struct.A*
 A &&getA() { return static_cast<A&&>(getB()); }

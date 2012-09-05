@@ -16,9 +16,11 @@
 #include "clang/Basic/LangOptions.h"
 #include "llvm/ADT/FoldingSet.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/ErrorHandling.h"
+#include <cctype>
 #include <cstdio>
 
 using namespace clang;
@@ -32,11 +34,15 @@ IdentifierInfo::IdentifierInfo() {
   ObjCOrBuiltinID = 0;
   HasMacro = false;
   IsExtension = false;
+  IsCXX11CompatKeyword = false;
   IsPoisoned = false;
   IsCPPOperatorKeyword = false;
   NeedsHandleIdentifier = false;
   IsFromAST = false;
+  ChangedAfterLoad = false;
   RevertedTokenID = false;
+  OutOfDate = false;
+  IsModulesImport = false;
   FETokenInfo = 0;
   Entry = 0;
 }
@@ -73,6 +79,10 @@ IdentifierTable::IdentifierTable(const LangOptions &LangOpts,
   // Populate the identifier table with info about keywords for the current
   // language.
   AddKeywords(LangOpts);
+      
+
+  // Add the '_experimental_modules_import' contextual keyword.
+  get("__experimental_modules_import").setModulesImport(true);
 }
 
 //===----------------------------------------------------------------------===//
@@ -92,9 +102,10 @@ namespace {
     KEYNOCXX = 0x80,
     KEYBORLAND = 0x100,
     KEYOPENCL = 0x200,
-    KEYC1X = 0x400,
+    KEYC11 = 0x400,
     KEYARC = 0x800,
-    KEYALL = 0x0fff
+    KEYNOMS = 0x01000,
+    KEYALL = (0xffff & ~KEYNOMS) // Because KEYNOMS is used to exclude.
   };
 }
 
@@ -102,10 +113,10 @@ namespace {
 /// identifiers because they are language keywords.  This causes the lexer to
 /// automatically map matching identifiers to specialized token codes.
 ///
-/// The C90/C99/CPP/CPP0x flags are set to 2 if the token should be
-/// enabled in the specified langauge, set to 1 if it is an extension
-/// in the specified language, and set to 0 if disabled in the
-/// specified language.
+/// The C90/C99/CPP/CPP0x flags are set to 3 if the token is a keyword in a
+/// future language standard, set to 2 if the token should be enabled in the
+/// specified language, set to 1 if it is an extension in the specified
+/// language, and set to 0 if disabled in the specified language.
 static void AddKeyword(StringRef Keyword,
                        tok::TokenKind TokenCode, unsigned Flags,
                        const LangOptions &LangOpts, IdentifierTable &Table) {
@@ -121,14 +132,22 @@ static void AddKeyword(StringRef Keyword,
   else if (LangOpts.AltiVec && (Flags & KEYALTIVEC)) AddResult = 2;
   else if (LangOpts.OpenCL && (Flags & KEYOPENCL)) AddResult = 2;
   else if (!LangOpts.CPlusPlus && (Flags & KEYNOCXX)) AddResult = 2;
-  else if (LangOpts.C1X && (Flags & KEYC1X)) AddResult = 2;
-  else if (LangOpts.ObjCAutoRefCount && (Flags & KEYARC)) AddResult = 2;
-           
+  else if (LangOpts.C11 && (Flags & KEYC11)) AddResult = 2;
+  // We treat bridge casts as objective-C keywords so we can warn on them
+  // in non-arc mode.
+  else if (LangOpts.ObjC2 && (Flags & KEYARC)) AddResult = 2;
+  else if (LangOpts.CPlusPlus && (Flags & KEYCXX0X)) AddResult = 3;
+
+  // Don't add this keyword under MicrosoftMode.
+  if (LangOpts.MicrosoftMode && (Flags & KEYNOMS))
+     return;
   // Don't add this keyword if disabled in this language.
   if (AddResult == 0) return;
 
-  IdentifierInfo &Info = Table.get(Keyword, TokenCode);
+  IdentifierInfo &Info =
+      Table.get(Keyword, AddResult == 3 ? tok::identifier : TokenCode);
   Info.setIsExtensionToken(AddResult == 1);
+  Info.setIsCXX11CompatKeyword(AddResult == 3);
 }
 
 /// AddCXXOperatorKeyword - Register a C++ operator keyword alternative
@@ -140,8 +159,8 @@ static void AddCXXOperatorKeyword(StringRef Keyword,
   Info.setIsCPlusPlusOperatorKeyword();
 }
 
-/// AddObjCKeyword - Register an Objective-C @keyword like "class" "selector" or
-/// "property".
+/// AddObjCKeyword - Register an Objective-C \@keyword like "class" "selector"
+/// or "property".
 static void AddObjCKeyword(StringRef Name,
                            tok::ObjCKeywordKind ObjCID,
                            IdentifierTable &Table) {
@@ -208,7 +227,7 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE( 6, 'i', 'n', ifndef);
   CASE( 6, 'i', 'p', import);
   CASE( 6, 'p', 'a', pragma);
-
+      
   CASE( 7, 'd', 'f', defined);
   CASE( 7, 'i', 'c', include);
   CASE( 7, 'w', 'r', warning);
@@ -216,8 +235,11 @@ tok::PPKeywordKind IdentifierInfo::getPPKeywordID() const {
   CASE( 8, 'u', 'a', unassert);
   CASE(12, 'i', 'c', include_next);
 
+  CASE(14, '_', 'p', __public_macro);
+      
+  CASE(15, '_', 'p', __private_macro);
+
   CASE(16, '_', 'i', __include_macros);
-  CASE(16, '_', 'e', __export_macro__);
 #undef CASE
 #undef HASH
   }
@@ -318,22 +340,22 @@ public:
 
 unsigned Selector::getNumArgs() const {
   unsigned IIF = getIdentifierInfoFlag();
-  if (IIF == ZeroArg)
+  if (IIF <= ZeroArg)
     return 0;
   if (IIF == OneArg)
     return 1;
-  // We point to a MultiKeywordSelector (pointer doesn't contain any flags).
-  MultiKeywordSelector *SI = reinterpret_cast<MultiKeywordSelector *>(InfoPtr);
+  // We point to a MultiKeywordSelector.
+  MultiKeywordSelector *SI = getMultiKeywordSelector();
   return SI->getNumArgs();
 }
 
 IdentifierInfo *Selector::getIdentifierInfoForSlot(unsigned argIndex) const {
-  if (getIdentifierInfoFlag()) {
+  if (getIdentifierInfoFlag() < MultiArg) {
     assert(argIndex == 0 && "illegal keyword index");
     return getAsIdentifierInfo();
   }
-  // We point to a MultiKeywordSelector (pointer doesn't contain any flags).
-  MultiKeywordSelector *SI = reinterpret_cast<MultiKeywordSelector *>(InfoPtr);
+  // We point to a MultiKeywordSelector.
+  MultiKeywordSelector *SI = getMultiKeywordSelector();
   return SI->getIdentifierInfoForSlot(argIndex);
 }
 
@@ -343,7 +365,7 @@ StringRef Selector::getNameForSlot(unsigned int argIndex) const {
 }
 
 std::string MultiKeywordSelector::getName() const {
-  llvm::SmallString<256> Str;
+  SmallString<256> Str;
   llvm::raw_svector_ostream OS(Str);
   for (keyword_iterator I = keyword_begin(), E = keyword_end(); I != E; ++I) {
     if (*I)
@@ -358,7 +380,7 @@ std::string Selector::getAsString() const {
   if (InfoPtr == 0)
     return "<null selector>";
 
-  if (InfoPtr & ArgFlags) {
+  if (getIdentifierInfoFlag() < MultiArg) {
     IdentifierInfo *II = getAsIdentifierInfo();
 
     // If the number of arguments is 0 then II is guaranteed to not be null.
@@ -371,8 +393,8 @@ std::string Selector::getAsString() const {
     return II->getName().str() + ":";
   }
 
-  // We have a multiple keyword selector (no embedded flags).
-  return reinterpret_cast<MultiKeywordSelector *>(InfoPtr)->getName();
+  // We have a multiple keyword selector.
+  return getMultiKeywordSelector()->getName();
 }
 
 /// Interpreting the given string using the normal CamelCase
@@ -441,6 +463,18 @@ static SelectorTableImpl &getSelectorTableImpl(void *P) {
   return *static_cast<SelectorTableImpl*>(P);
 }
 
+/*static*/ Selector
+SelectorTable::constructSetterName(IdentifierTable &Idents,
+                                   SelectorTable &SelTable,
+                                   const IdentifierInfo *Name) {
+  SmallString<100> SelectorName;
+  SelectorName = "set";
+  SelectorName += Name->getName();
+  SelectorName[3] = toupper(SelectorName[3]);
+  IdentifierInfo *SetterName = &Idents.get(SelectorName);
+  return SelTable.getUnarySelector(SetterName);
+}
+
 size_t SelectorTable::getTotalMemory() const {
   SelectorTableImpl &SelTabImpl = getSelectorTableImpl(Impl);
   return SelTabImpl.Allocator.getTotalMemory();
@@ -491,6 +525,5 @@ const char *clang::getOperatorSpelling(OverloadedOperatorKind Operator) {
 #include "clang/Basic/OperatorKinds.def"
   }
 
-  return 0;
+  llvm_unreachable("Invalid OverloadedOperatorKind!");
 }
-

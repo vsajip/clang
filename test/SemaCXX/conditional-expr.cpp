@@ -1,8 +1,8 @@
-// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -fsyntax-only -verify -std=c++0x -Wsign-conversion %s
+// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -fsyntax-only -verify -std=c++11 -Wsign-conversion %s
 
 // C++ rules for ?: are a lot stricter than C rules, and have to take into
 // account more conversion options.
-// This test runs in C++0x mode for the contextual conversion of the condition.
+// This test runs in C++11 mode for the contextual conversion of the condition.
 
 struct ToBool { explicit operator bool(); };
 
@@ -96,8 +96,8 @@ void test()
   (void)(i1 ? BadDerived() : BadBase());
 
   // b2.1 (hierarchy stuff)
-  const Base constret();
-  const Derived constder();
+  extern const Base constret();
+  extern const Derived constder();
   // should use const overload
   A a1((i1 ? constret() : Base()).trick());
   A a2((i1 ? Base() : constret()).trick());
@@ -327,4 +327,28 @@ namespace PR9236 {
     (void)(true ? __null : A()); // expected-error{{non-pointer operand type 'A' incompatible with NULL}}
     (void)(true ? (void*)0 : A()); // expected-error{{incompatible operand types}}
   }
+}
+
+namespace DR587 {
+  template<typename T>
+  const T *f(bool b) {
+    static T t1 = T();
+    static const T t2 = T();
+    return &(b ? t1 : t2);
+  }
+  struct S {};
+  template const int *f(bool);
+  template const S *f(bool);
+
+  extern bool b;
+  int i = 0;
+  const int ci = 0;
+  volatile int vi = 0;
+  const volatile int cvi = 0;
+
+  const int &cir = b ? i : ci;
+  volatile int &vir = b ? vi : i;
+  const volatile int &cvir1 = b ? ci : cvi;
+  const volatile int &cvir2 = b ? cvi : vi;
+  const volatile int &cvir3 = b ? ci : vi; // expected-error{{volatile lvalue reference to type 'const volatile int' cannot bind to a temporary of type 'int'}}
 }

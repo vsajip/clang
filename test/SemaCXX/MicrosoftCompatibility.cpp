@@ -1,6 +1,10 @@
-// RUN: %clang_cc1 %s -triple i686-pc-win32 -fsyntax-only -Wmicrosoft -verify -fms-compatibility -fexceptions -fcxx-exceptions
+// RUN: %clang_cc1 %s -triple i686-pc-win32 -fsyntax-only -std=c++11 -Wmicrosoft -verify -fms-compatibility -fexceptions -fcxx-exceptions
 
 
+typedef unsigned short char16_t;
+typedef unsigned int char32_t;
+
+typename decltype(3) a; // expected-warning {{expected a qualified name after 'typename'}}
 
 namespace ms_conversion_rules {
 
@@ -23,7 +27,7 @@ namespace ms_protected_scope {
 
   int jump_over_variable_init(bool b) {
     if (b)
-      goto foo; // expected-warning {{illegal goto into protected scope}}
+      goto foo; // expected-warning {{goto into protected scope}}
     C c; // expected-note {{jump bypasses variable initialization}}
   foo:
     return 1;
@@ -35,7 +39,7 @@ struct Y {
 
 void jump_over_var_with_dtor() {
   goto end; // expected-warning{{goto into protected scope}}
-  Y y; // expected-note {{jump bypasses variable initialization}}
+  Y y; // expected-note {{jump bypasses variable with a non-trivial destructor}}
  end:
     ;
 }
@@ -51,7 +55,7 @@ void jump_over_var_with_dtor() {
 
  
 void exception_jump() {
-  goto l2; // expected-error {{illegal goto into protected scope}}
+  goto l2; // expected-error {{goto into protected scope}}
   try { // expected-note {{jump bypasses initialization of try block}}
      l2: ;
   } catch(int) {
@@ -68,7 +72,28 @@ int jump_over_indirect_goto() {
   
 }
 
+namespace PR11826 {
+  struct pair {
+    pair(int v) { }
+    void operator=(pair&& rhs) { }
+  };
+  void f() {
+    pair p0(3);
+    pair p = p0;
+  }
+}
 
+namespace PR11826_for_symmetry {
+  struct pair {
+    pair(int v) { }
+    pair(pair&& rhs) { }
+  };
+  void f() {
+    pair p0(3);
+    pair p(4);
+    p = p0;
+  }
+}
 
 namespace ms_using_declaration_bug {
 
@@ -84,7 +109,7 @@ private:
 
 class C : public B { 
 private:   
-  using B::f; // expected-warning {{using declaration refers to inaccessible member 'ms_using_declaration_bug::B::f', which refers to accessible member 'ms_using_declaration_bug::A::f', accepted for Microsoft compatibility}}
+  using B::f; // expected-warning {{using declaration referring to inaccessible member 'ms_using_declaration_bug::B::f' (which refers to accessible member 'ms_using_declaration_bug::A::f') is a Microsoft compatibility extension}}
 };
 
 }
@@ -126,33 +151,30 @@ public:
 };
 
 template <class T>
-void function_missing_typename()
+void function_missing_typename(const T::Type param)// expected-warning {{missing 'typename' prior to dependent type name}}
 {
     const T::Type var = 2; // expected-warning {{missing 'typename' prior to dependent type name}}
 }
 
-template void function_missing_typename<D>();
+template void function_missing_typename<D>(const D::Type param);
 
 }
 
-
-
-namespace lookup_dependent_bases_id_expr {
-
-template<class T> class A {
-public:
-  int var;
+enum ENUM2 {
+	ENUM2_a = (enum ENUM2) 4,
+	ENUM2_b = 0x9FFFFFFF, // expected-warning {{enumerator value is not representable in the underlying type 'int'}}
+	ENUM2_c = 0x100000000 // expected-warning {{enumerator value is not representable in the underlying type 'int'}}
 };
 
 
-template<class T>
-class B : public A<T> {
-public:
-  void f() {
-    var = 3;
+namespace PR11791 {
+  template<class _Ty>
+  void del(_Ty *_Ptr) {
+    _Ptr->~_Ty();  // expected-warning {{pseudo-destructors on type void are a Microsoft extension}}
   }
-};
 
-template class B<int>;
-
+  void f() {
+    int* a = 0;
+    del((void*)a);  // expected-note {{in instantiation of function template specialization}}
+  }
 }

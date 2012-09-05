@@ -27,7 +27,7 @@ void unevaluated_tests() {
 struct A { virtual ~A() {} };
 void polymorphic_test() {
   A *a; // expected-note{{initialize the variable 'a' to silence this warning}}
-  (void)typeid(*a); // expected-warning{{variable 'a' is uninitialized when used here }}
+  (void)typeid(*a); // expected-warning{{variable 'a' is uninitialized when used here}}
 }
 
 // Handle cases where the CFG may constant fold some branches, thus
@@ -141,3 +141,9 @@ void test_bitcasts_2() {
   int y = (float &)x; // expected-warning {{uninitialized when used here}}
 }
 
+void consume_const_ref(const int &n);
+int test_const_ref() {
+  int n; // expected-note {{variable}}
+  consume_const_ref(n);
+  return n; // expected-warning {{uninitialized when used here}}
+}

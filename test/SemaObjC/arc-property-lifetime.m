@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin11 -fobjc-runtime-has-weak -fsyntax-only -fobjc-arc -verify -Wno-objc-root-class %s
 // rdar://9340606
 
 @interface Foo {
@@ -110,3 +110,66 @@
 @synthesize isAutosaving = _isAutosaving;
 @end
 
+// rdar://10239594
+// Test for 'Class' properties being unretained.
+@interface MyClass {
+@private
+    Class _controllerClass;
+    id _controllerId;
+}
+@property (copy) Class controllerClass;
+@property (copy) id controllerId;
+@end
+
+@implementation MyClass
+@synthesize controllerClass = _controllerClass;
+@synthesize controllerId = _controllerId;
+@end
+
+// rdar://10630891
+@interface UIView @end
+@class UIColor;
+
+@interface UIView(UIViewRendering)
+@property(nonatomic,copy) UIColor *backgroundColor;
+@end
+
+@interface UILabel : UIView
+@end
+
+@interface MyView 
+@property (strong) UILabel *label;
+@end
+
+@interface MyView2 : MyView @end
+
+@implementation MyView2
+- (void)foo {
+  super.label.backgroundColor = 0;
+}
+@end
+
+// rdar://10694932
+@interface Baz 
+@property  id prop;
+@property  __strong id strong_prop;
+@property  (strong) id strong_attr_prop;
+@property  (strong) __strong id realy_strong_attr_prop;
++ (id) alloc;
+- (id) init;
+- (id) implicit;
+- (void) setImplicit : (id) arg; 
+@end
+
+void foo(Baz *f) {
+        f.prop = [[Baz alloc] init];
+        f.strong_prop = [[Baz alloc] init];
+        f.strong_attr_prop = [[Baz alloc] init];
+        f.realy_strong_attr_prop = [[Baz alloc] init];
+        f.implicit = [[Baz alloc] init];
+}
+
+// rdar://11253688
+@interface Boom 
+@property (readonly) const void * innerPointer __attribute__((objc_returns_inner_pointer)); // expected-error {{'objc_returns_inner_pointer' attribute only applies to methods}}
+@end

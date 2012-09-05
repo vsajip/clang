@@ -1,11 +1,9 @@
 // NOTE: Use '-fobjc-gc' to test the analysis being run twice, and multiple reports are not issued.
-// RUN: %clang_cc1 -triple i386-apple-darwin10 -analyze -analyzer-checker=core,deadcode.IdempotentOperations,experimental.core,osx.cocoa.AtSync -analyzer-store=region -analyzer-constraints=basic -verify -fblocks -Wno-unreachable-code -Wno-null-dereference %s
-// RUN: %clang_cc1 -triple i386-apple-darwin10 -analyze -analyzer-checker=core,deadcode.IdempotentOperations,experimental.core,osx.cocoa.AtSync -analyzer-store=region -analyzer-constraints=range -verify -fblocks -Wno-unreachable-code -Wno-null-dereference %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,deadcode.IdempotentOperations,experimental.core,osx.cocoa.AtSync -analyzer-store=region -analyzer-constraints=basic -verify -fblocks -Wno-unreachable-code -Wno-null-dereference %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,deadcode.IdempotentOperations,experimental.core,osx.cocoa.AtSync -analyzer-store=region -analyzer-constraints=range -verify -fblocks -Wno-unreachable-code -Wno-null-dereference %s
+// RUN: %clang_cc1 -triple i386-apple-darwin10 -analyze -analyzer-checker=core,alpha.deadcode.IdempotentOperations,alpha.core,osx.cocoa.AtSync,osx.AtomicCAS -analyzer-store=region -analyzer-constraints=range -verify -fblocks -Wno-unreachable-code -Wno-null-dereference -Wno-objc-root-class %s
+// RUN: %clang_cc1 -triple x86_64-apple-darwin10 -analyze -analyzer-checker=core,alpha.deadcode.IdempotentOperations,alpha.core,osx.cocoa.AtSync,osx.AtomicCAS -analyzer-store=region -analyzer-constraints=range -verify -fblocks -Wno-unreachable-code -Wno-null-dereference -Wno-objc-root-class %s
 
 #ifndef __clang_analyzer__
-#error __clang__analyzer__ not defined
+#error __clang_analyzer__ not defined
 #endif
 
 typedef struct objc_ivar *Ivar;
@@ -274,6 +272,17 @@ void rdar_6777003(int x) {
   *p = 1; // expected-warning{{Dereference of null pointer}}  
 }
 
+// Check that the pointer-to-conts arguments do not get invalidated by Obj C 
+// interfaces. radar://10595327
+int rdar_10595327(char *str) {
+  char fl = str[0]; 
+  int *p = 0;
+  NSString *s = [NSString stringWithUTF8String:str];
+  if (str[0] != fl)
+      return *p; // no-warning
+  return 0;
+}
+
 // For pointer arithmetic, --/++ should be treated as preserving non-nullness,
 // regardless of how well the underlying StoreManager reasons about pointer
 // arithmetic.
@@ -482,6 +491,17 @@ int OSAtomicCompareAndSwap32Barrier();
   return 1;
 }
 @end
+
+// Do not crash when performing compare and swap on symbolic values.
+typedef int int32_t;
+typedef int int32;
+typedef int32 Atomic32;
+int OSAtomicCompareAndSwap32( int32_t __oldValue, int32_t __newValue, volatile int32_t *__theValue);
+void radar11390991_NoBarrier_CompareAndSwap(volatile Atomic32 *ptr,
+                              Atomic32 old_value,
+                              Atomic32 new_value) {
+  OSAtomicCompareAndSwap32(old_value, new_value, ptr);
+}
 
 // PR 4594 - This was a crash when handling casts in SimpleSValuator.
 void PR4594() {
@@ -1237,7 +1257,7 @@ void pr9269() {
   struct s { char *bar[10]; } baz[2] = { 0 };
   unsigned i = 0;
   for (i = 0;
-  (* ({ while(0); ({ &baz[0]; }); })).bar[0] != 0;
+  (* ({ while(0); ({ &baz[0]; }); })).bar[0] != 0; // expected-warning {{while loop has empty body}} expected-note {{put the semicolon on a separate line to silence this warning}}
        ++i) {}
 }
 
@@ -1320,4 +1340,34 @@ void radar9414427() {
 
 @implementation RDar9465344
 @end
+
+// Don't crash when analyzing access to 'self' within a block.
+@interface Rdar10380300Base 
+- (void) foo;
+@end
+@interface Rdar10380300 : Rdar10380300Base @end
+@implementation Rdar10380300
+- (void)foo {
+  ^{
+    [super foo];
+  }();
+}
+@end
+
+// Don't crash when a ?: is only preceded by a statement (not an expression)
+// in the CFG.
+void __assert_fail();
+
+enum rdar1196620_e { E_A, E_B, E_C, E_D };
+struct rdar1196620_s { int ints[E_D+1]; };
+
+static void rdar1196620_call_assert(struct rdar1196620_s* s) {
+  int i = 0;
+  s?(void)0:__assert_fail();
+}
+
+static void rdar1196620(struct rdar1196620_s* s) {
+  rdar1196620_call_assert(s);
+}
+
 

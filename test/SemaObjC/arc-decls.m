@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -fobjc-arc -verify %s
+// RUN: %clang_cc1 -fsyntax-only -fblocks -fobjc-arc -verify -Wno-objc-root-class %s
 
 // rdar://8843524
 
@@ -20,6 +20,11 @@ union u {
    union u c; 
 };
 @end
+
+// rdar://10260525
+struct r10260525 {
+  id (^block) (); // expected-error {{ARC forbids blocks in structs or unions}}
+};
 
 struct S { 
     id __attribute__((objc_ownership(none))) i;
@@ -80,4 +85,17 @@ void func()
 - (id)ns_non __attribute((ns_returns_not_retained)); // expected-error {{overriding method has mismatched ns_returns_not_retained attributes}}
 - (id)not_ret:(id) b __attribute((ns_returns_retained)); // expected-error {{overriding method has mismatched ns_returns_retained attributes}}
 - (id)both__returns_not_retained:(id) b __attribute((ns_returns_not_retained));
+// rdar://12173491
+@property (copy, nonatomic) __attribute__((ns_returns_retained)) id (^fblock)(void);
 @end
+
+// Test that we give a good diagnostic here that mentions the missing
+// ownership qualifier.  We don't want this to get suppressed because
+// of an invalid conversion.
+void test7(void) {
+  id x;
+  id *px = &x; // expected-error {{pointer to non-const type 'id' with no explicit ownership}}
+
+  I *y;
+  J **py = &y; // expected-error {{pointer to non-const type 'J *' with no explicit ownership}} expected-warning {{incompatible pointer types initializing}}
+}

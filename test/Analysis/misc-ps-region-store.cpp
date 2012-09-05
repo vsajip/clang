@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -triple i386-apple-darwin9 -analyze -analyzer-checker=core,experimental.core -analyzer-store=region -verify -fblocks -analyzer-opt-analyze-nested-blocks %s
-// RUN: %clang_cc1 -triple x86_64-apple-darwin9 -analyze -analyzer-checker=core,experimental.core -analyzer-store=region -verify -fblocks   -analyzer-opt-analyze-nested-blocks %s
+// RUN: %clang_cc1 -triple i386-apple-darwin9 -analyze -analyzer-checker=core,alpha.core -analyzer-store=region -verify -fblocks -analyzer-ipa=inlining -analyzer-opt-analyze-nested-blocks %s -fexceptions -fcxx-exceptions
+// RUN: %clang_cc1 -triple x86_64-apple-darwin9 -analyze -analyzer-checker=core,alpha.core -analyzer-store=region -verify -fblocks -analyzer-ipa=inlining -analyzer-opt-analyze-nested-blocks %s -fexceptions -fcxx-exceptions
 
 // Test basic handling of references.
 char &test1_aux();
@@ -271,10 +271,24 @@ class Rdar9212495_A : public Rdar9212495_B {};
 const Rdar9212495_A& rdar9212495(const Rdar9212495_C* ptr) {
   const Rdar9212495_A& val = dynamic_cast<const Rdar9212495_A&>(*ptr);
   
+  // This is not valid C++; dynamic_cast with a reference type will throw an
+  // exception if the pointer does not match the expected type. However, our
+  // implementation of dynamic_cast will pass through a null pointer...or a
+  // "null reference"! So this branch is actually possible.
   if (&val == 0) {
-    val.bar(); // FIXME: This should eventually be a null dereference.
+    val.bar(); // expected-warning{{Called C++ object pointer is null}}
   }
   
+  return val;
+}
+
+const Rdar9212495_A* rdar9212495_ptr(const Rdar9212495_C* ptr) {
+  const Rdar9212495_A* val = dynamic_cast<const Rdar9212495_A*>(ptr);
+
+  if (val == 0) {
+    val->bar(); // expected-warning{{Called C++ object pointer is null}}
+  }
+
   return val;
 }
 
@@ -466,4 +480,151 @@ void rdar10202899_test3() {
   *p = 0xDEADBEEF;
 }
 
+// This used to crash the analyzer because of the unnamed bitfield.
+void PR11249()
+{
+  struct {
+    char f1:4;
+    char   :4;
+    char f2[1];
+    char f3;
+  } V = { 1, {2}, 3 };
+  int *p = 0;
+  if (V.f1 != 1)
+    *p = 0xDEADBEEF;  // no-warning
+  if (V.f2[0] != 2)
+    *p = 0xDEADBEEF;  // no-warning
+  if (V.f3 != 3)
+    *p = 0xDEADBEEF;  // no-warning
+}
+
+// Handle doing a load from the memory associated with the code for
+// a function.
+extern double nan( const char * );
+double PR11450() {
+  double NaN = *(double*) nan;
+  return NaN;
+}
+
+// Test that 'this' is assumed non-null upon analyzing the entry to a "top-level"
+// function (i.e., when not analyzing from a specific caller).
+struct TestNullThis {
+  int field;
+  void test();
+};
+
+void TestNullThis::test() {
+  int *p = &field;
+  if (p)
+    return;
+  field = 2; // no-warning
+}
+
+// Test handling of 'catch' exception variables, and not warning
+// about uninitialized values.
+enum MyEnum { MyEnumValue };
+MyEnum rdar10892489() {
+  try {
+      throw MyEnumValue;
+  } catch (MyEnum e) {
+      return e; // no-warning
+  }
+  return MyEnumValue;
+}
+
+MyEnum rdar10892489_positive() {
+  try {
+    throw MyEnumValue;
+  } catch (MyEnum e) {
+    int *p = 0;
+    // FALSE NEGATIVE
+    *p = 0xDEADBEEF; // {{null}}
+    return e;
+  }
+  return MyEnumValue;
+}
+
+// Test handling of catch with no condition variable.
+void PR11545() {
+  try
+  {
+      throw;
+  }
+  catch (...)
+  {
+  }
+}
+
+void PR11545_positive() {
+  try
+  {
+      throw;
+  }
+  catch (...)
+  {
+    int *p = 0;
+    // FALSE NEGATIVE
+    *p = 0xDEADBEEF; // {{null}}
+  }
+}
+
+// Test handling taking the address of a field.  While the analyzer
+// currently doesn't do anything intelligent here, this previously
+// resulted in a crash.
+class PR11146 {
+public:
+  struct Entry;
+  void baz();
+};
+
+struct PR11146::Entry {
+  int x;
+};
+
+void PR11146::baz() {
+  (void) &Entry::x;
+}
+
+// Test symbolicating a reference.  In this example, the
+// analyzer (originally) didn't know how to handle x[index - index2],
+// returning an UnknownVal.  The conjured symbol wasn't a location,
+// and would result in a crash.
+void rdar10924675(unsigned short x[], int index, int index2) {
+  unsigned short &y = x[index - index2];
+  if (y == 0)
+    return;
+}
+
+// Test handling CXXScalarValueInitExprs.
+void rdar11401827() {
+  int x = int();
+  if (!x) {
+    int *p = 0;
+    *p = 0xDEADBEEF; // expected-warning {{null pointer}}
+  }
+  else {
+    int *p = 0;
+    *p = 0xDEADBEEF;
+  }
+}
+
+//===---------------------------------------------------------------------===//
+// Handle inlining of C++ method calls.
+//===---------------------------------------------------------------------===//
+
+struct A {
+  int *p;
+  void foo(int *q) {
+    p = q;
+  }
+  void bar() {
+    *p = 0; // expected-warning {{null pointer}}
+  }
+};
+
+void test_inline() {
+  A a;
+  a.foo(0);
+  a.bar();
+}
 

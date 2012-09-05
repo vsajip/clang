@@ -11,6 +11,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Frontend/FrontendDiagnostic.h"
 #include "clang/Lex/Preprocessor.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace clang;
 
@@ -39,7 +40,8 @@ public:
   }
 
   virtual void FileChanged(SourceLocation Loc, FileChangeReason Reason,
-                           SrcMgr::CharacteristicKind FileType);
+                           SrcMgr::CharacteristicKind FileType,
+                           FileID PrevFID);
 };
 }
 
@@ -72,7 +74,8 @@ void clang::AttachHeaderIncludeGen(Preprocessor &PP, bool ShowAllHeaders,
 
 void HeaderIncludesCallback::FileChanged(SourceLocation Loc,
                                          FileChangeReason Reason,
-                                       SrcMgr::CharacteristicKind NewFileType) {
+                                       SrcMgr::CharacteristicKind NewFileType,
+                                       FileID PrevFID) {
   // Unless we are exiting a #include, make sure to skip ahead to the line the
   // #include directive was at.
   PresumedLoc UserLoc = SM.getPresumedLoc(Loc);
@@ -105,10 +108,10 @@ void HeaderIncludesCallback::FileChanged(SourceLocation Loc,
   // are showing all headers.
   if (ShowHeader && Reason == PPCallbacks::EnterFile) {
     // Write to a temporary string to avoid unnecessary flushing on errs().
-    llvm::SmallString<512> Filename(UserLoc.getFilename());
+    SmallString<512> Filename(UserLoc.getFilename());
     Lexer::Stringify(Filename);
 
-    llvm::SmallString<256> Msg;
+    SmallString<256> Msg;
     if (ShowDepth) {
       // The main source file is at depth 1, so skip one dot.
       for (unsigned i = 1; i != CurrentIncludeDepth; ++i)

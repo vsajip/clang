@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -std=c++0x %s -verify 
+// RUN: %clang_cc1 -fsyntax-only -std=c++11 %s -verify 
 
 namespace PR10457 {
 
@@ -14,5 +14,36 @@ namespace PR10457 {
 
   void f() {
     string s("hello");
+  }
+
+  struct Foo {
+   Foo(int) { }
+
+
+   template <typename T>
+   Foo(T, int i) : Foo(i) { }
+};
+
+  void test_Foo()
+  {
+    Foo f(1, 1);
+  }
+}
+
+namespace PR12890 {
+  class Document
+  {
+  public:
+      Document() = default;
+
+      template <class T>
+      explicit
+      Document(T&& t) : Document()
+      {
+      }
+  };
+  void f()
+  {
+      Document d(1);
   }
 }

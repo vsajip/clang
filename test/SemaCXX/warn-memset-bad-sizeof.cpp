@@ -35,27 +35,27 @@ void f(Mat m, const Foo& const_foo, char *buffer) {
 
   /* Should warn */
   memset(&s, 0, sizeof(&s));  // \
-      // expected-warning {{argument to 'sizeof' in 'memset' call is the same expression as the destination}}
+      // expected-warning {{'memset' call operates on objects of type 'S' while the size is based on a different type 'S *'}} expected-note{{did you mean to remove the addressof in the argument to 'sizeof' (and multiply it by the number of elements)?}}
   memset(ps, 0, sizeof(ps));  // \
-      // expected-warning {{argument to 'sizeof' in 'memset' call is the same expression as the destination}}
+      // expected-warning {{'memset' call operates on objects of type 'S' while the size is based on a different type 'S *'}} expected-note{{did you mean to dereference the argument to 'sizeof' (and multiply it by the number of elements)?}}
   memset(ps2, 0, sizeof(ps2));  // \
-      // expected-warning {{argument to 'sizeof' in 'memset' call is the same expression as the destination}}
+      // expected-warning {{'memset' call operates on objects of type 'S' while the size is based on a different type 'PS' (aka 'S *')}} expected-note{{did you mean to dereference the argument to 'sizeof' (and multiply it by the number of elements)?}}
   memset(ps2, 0, sizeof(typeof(ps2)));  // \
       // expected-warning {{argument to 'sizeof' in 'memset' call is the same pointer type}}
   memset(ps2, 0, sizeof(PS));  // \
       // expected-warning {{argument to 'sizeof' in 'memset' call is the same pointer type}}
   memset(heap_buffer, 0, sizeof(heap_buffer));  // \
-      // expected-warning {{argument to 'sizeof' in 'memset' call is the same expression as the destination}}
+      // expected-warning {{'memset' call operates on objects of type 'char' while the size is based on a different type 'char *'}} expected-note{{did you mean to provide an explicit length?}}
 
   memcpy(&s, 0, sizeof(&s));  // \
-      // expected-warning {{argument to 'sizeof' in 'memcpy' call is the same expression as the destination}}
+      // expected-warning {{'memcpy' call operates on objects of type 'S' while the size is based on a different type 'S *'}} expected-note{{did you mean to remove the addressof in the argument to 'sizeof' (and multiply it by the number of elements)?}}
   memcpy(0, &s, sizeof(&s));  // \
-      // expected-warning {{argument to 'sizeof' in 'memcpy' call is the same expression as the source}}
+      // expected-warning {{'memcpy' call operates on objects of type 'S' while the size is based on a different type 'S *'}} expected-note{{did you mean to remove the addressof in the argument to 'sizeof' (and multiply it by the number of elements)?}}
 
   memmove(ps, 0, sizeof(ps));  // \
-      // expected-warning {{argument to 'sizeof' in 'memmove' call is the same expression as the destination}}
+      // expected-warning {{'memmove' call operates on objects of type 'S' while the size is based on a different type 'S *'}} expected-note{{did you mean to dereference the argument to 'sizeof' (and multiply it by the number of elements)?}}
   memcmp(ps, 0, sizeof(ps));  // \
-      // expected-warning {{argument to 'sizeof' in 'memcmp' call is the same expression as the destination}}
+      // expected-warning {{'memcmp' call operates on objects of type 'S' while the size is based on a different type 'S *'}} expected-note{{did you mean to dereference the argument to 'sizeof' (and multiply it by the number of elements)?}}
 
   /* Shouldn't warn */
   memset((void*)&s, 0, sizeof(&s));
@@ -104,6 +104,14 @@ void f(Mat m, const Foo& const_foo, char *buffer) {
   // Copy to raw buffer shouldn't warn either
   memcpy(&foo, &arr, sizeof(Foo));
   memcpy(&arr, &foo, sizeof(Foo));
+
+  // Shouldn't warn, and shouldn't crash either.
+  memset(({
+    if (0) {}
+    while (0) {}
+    for (;;) {}
+    &s;
+  }), 0, sizeof(s));
 }
 
 namespace ns {
@@ -111,4 +119,27 @@ void memset(void* s, char c, int n);
 void f(int* i) {
   memset(i, 0, sizeof(i));
 }
+}
+
+extern "C" int strncmp(const char *s1, const char *s2, unsigned n);
+extern "C" int strncasecmp(const char *s1, const char *s2, unsigned n);
+extern "C" char *strncpy(char *det, const char *src, unsigned n);
+extern "C" char *strncat(char *dst, const char *src, unsigned n);
+extern "C" char *strndup(const  char *src, unsigned n);
+
+void strcpy_and_friends() {
+  const char* FOO = "<- should be an array instead";
+  const char* BAR = "<- this, too";
+
+  strncmp(FOO, BAR, sizeof(FOO)); // \
+      // expected-warning {{'strncmp' call operates on objects of type 'const char' while the size is based on a different type 'const char *'}} expected-note{{did you mean to provide an explicit length?}}
+  strncasecmp(FOO, BAR, sizeof(FOO));  // \
+      // expected-warning {{'strncasecmp' call operates on objects of type 'const char' while the size is based on a different type 'const char *'}} expected-note{{did you mean to provide an explicit length?}}
+
+  char buff[80];
+
+  strncpy(buff, BAR, sizeof(BAR)); // \
+      // expected-warning {{'strncpy' call operates on objects of type 'const char' while the size is based on a different type 'const char *'}} expected-note{{did you mean to provide an explicit length?}}
+  strndup(FOO, sizeof(FOO)); // \
+      // expected-warning {{'strndup' call operates on objects of type 'const char' while the size is based on a different type 'const char *'}} expected-note{{did you mean to provide an explicit length?}}
 }

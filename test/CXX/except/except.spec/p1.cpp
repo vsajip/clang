@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -fexceptions -fcxx-exceptions -fsyntax-only -verify %s
+// RUN: %clang_cc1 -std=c++11 -fexceptions -fcxx-exceptions -fsyntax-only -verify %s
 
 // Simple parser tests, dynamic specification.
 
@@ -60,14 +60,22 @@ namespace noex {
 }
 
 namespace noexcept_unevaluated {
-  template<typename T> void f(T) {
+  template<typename T> bool f(T) {
     T* x = 1;
   }
 
   template<typename T>
-  void g(T x) noexcept((f(x), sizeof(T) == 4)) { }
+  void g(T x) noexcept((sizeof(T) == sizeof(int)) || noexcept(f(x))) { }
 
   void h() {
     g(1);
   }
+}
+
+namespace PR11084 {
+  template<int X> struct A { 
+    static int f() noexcept(1/X) { return 10; }  // expected-error{{argument to noexcept specifier must be a constant expression}} expected-note{{division by zero}}
+  };
+
+  void g() { A<0>::f(); } // expected-note{{in instantiation of exception specification for 'f' requested here}}
 }

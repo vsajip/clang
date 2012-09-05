@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -std=c++0x %s
+// RUN: %clang_cc1 -fsyntax-only -std=c++11 %s
 
 template <class T>
 T&&
@@ -38,4 +38,3 @@ int main()
 {
     array<DefaultOnly, 1> a, b;
 }
-

@@ -46,7 +46,7 @@ namespace M {
   int g(N::X); // expected-note{{candidate function}}
 
   void test(N::X x) {
-    g(x); // expected-error{{call to 'g' is ambiguous; candidates are:}}
+    g(x); // expected-error{{call to 'g' is ambiguous}}
     int i = (g)(x);
 
     int g(N::X);
@@ -106,5 +106,29 @@ namespace test6 {
   void test() {
     __builtin_va_list args;
     test6_function(args);
+  }
+}
+
+// PR13682: we might need to instantiate class temploids.
+namespace test7 {
+  namespace inner {
+    class A {};
+    void test7_function(A &);
+  }
+  template <class T> class B : public inner::A {};
+
+  void test(B<int> &ref) {
+    test7_function(ref);
+  }
+}
+
+// Like test7, but ensure we don't complain if the type is properly
+// incomplete.
+namespace test8 {
+  template <class T> class B;
+  void test8_function(B<int> &);
+
+  void test(B<int> &ref) {
+    test8_function(ref);
   }
 }

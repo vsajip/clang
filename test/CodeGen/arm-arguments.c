@@ -1,3 +1,4 @@
+// REQUIRES: arm-registered-target
 // RUN: %clang_cc1 -triple armv7-apple-darwin9 -target-abi apcs-gnu -emit-llvm -w -o - %s | FileCheck -check-prefix=APCS-GNU %s
 // RUN: %clang_cc1 -triple armv7-apple-darwin9 -target-abi aapcs -emit-llvm -w -o - %s | FileCheck -check-prefix=AAPCS %s
 
@@ -153,3 +154,27 @@ struct s29 f29() {}
 // AAPCS: define arm_aapcscc void @f30({{.*}} noalias sret
 struct s30 { _Complex int f0; };
 struct s30 f30() {}
+
+// PR11905
+struct s31 { char x; };
+void f31(struct s31 s) { }
+// AAPCS: @f31([1 x i32] %s.coerce)
+// AAPCS: %s = alloca %struct.s31, align 4
+// AAPCS: alloca [1 x i32]
+// AAPCS: store [1 x i32] %s.coerce, [1 x i32]*
+// APCS-GNU: @f31([1 x i32] %s.coerce)
+// APCS-GNU: %s = alloca %struct.s31, align 4
+// APCS-GNU: alloca [1 x i32]
+// APCS-GNU: store [1 x i32] %s.coerce, [1 x i32]*
+
+// PR13562
+struct s32 { double x; };
+void f32(struct s32 s) { }
+// AAPCS: @f32([1 x i64] %s.coerce)
+// APCS-GNU: @f32([2 x i32] %s.coerce)
+
+// PR13350
+struct s33 { char buf[32*32]; };
+void f33(struct s33 s) { }
+// APCS-GNU: define void @f33(%struct.s33* byval %s)
+// AAPCS: define arm_aapcscc void @f33(%struct.s33* byval %s)

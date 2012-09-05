@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -fcxx-exceptions -verify -std=c++0x -Wall %s
+// RUN: %clang_cc1 -fsyntax-only -fcxx-exceptions -verify -std=c++11 -Wall %s
 
 template<bool b> struct ExceptionIf { static int f(); };
 template<> struct ExceptionIf<false> { typedef int f; };
@@ -17,7 +17,7 @@ namespace InClassInitializers {
   // is false.
   bool ThrowSomething() noexcept(false);
   struct ConstExpr {
-    bool b = noexcept(ConstExpr()) && ThrowSomething(); // expected-error {{exception specification is not available until end of class definition}}
+    bool b = noexcept(ConstExpr()) && ThrowSomething(); // expected-error {{cannot be used by non-static data member initializer}}
   };
   // We can use it now.
   bool w = noexcept(ConstExpr());
@@ -25,39 +25,74 @@ namespace InClassInitializers {
   // Much more obviously broken: we can't parse the initializer without already
   // knowing whether it produces a noexcept expression.
   struct TemplateArg {
-    int n = ExceptionIf<noexcept(TemplateArg())>::f(); // expected-error {{exception specification is not available until end of class definition}}
+    int n = ExceptionIf<noexcept(TemplateArg())>::f(); // expected-error {{cannot be used by non-static data member initializer}}
   };
   bool x = noexcept(TemplateArg());
 
   // And within a nested class.
+  // FIXME: The diagnostic location is terrible here.
   struct Nested {
     struct Inner {
-      int n = ExceptionIf<noexcept(Nested())>::f(); // expected-error {{exception specification is not available until end of class definition}}
-    } inner;
+      int n = ExceptionIf<noexcept(Nested())>::f();
+    } inner; // expected-error {{cannot be used by non-static data member initializer}}
   };
   bool y = noexcept(Nested());
   bool z = noexcept(Nested::Inner());
+
+  struct Nested2 {
+    struct Inner;
+    int n = Inner().n; // expected-error {{cannot be used by non-static data member initializer}}
+    struct Inner {
+      int n = ExceptionIf<noexcept(Nested())>::f();
+    } inner;
+  };
 }
 
-// FIXME:
-// The same problem arises in delayed parsing of exception specifications,
-// which clang does not yet support.
 namespace ExceptionSpecification {
+  // A type is permitted to be used in a dynamic exception specification when it
+  // is still being defined, but isn't complete within such an exception
+  // specification.
   struct Nested { // expected-note {{not complete}}
     struct T {
-      T() noexcept(!noexcept(Nested())); // expected-error {{incomplete type}}
+      T() noexcept(!noexcept(Nested())); // expected-error{{incomplete type}}
     } t;
   };
 }
 
-// FIXME:
-// The same problem arises in delayed parsing of default arguments,
-// which clang does not yet support.
 namespace DefaultArgument {
-  // FIXME: this diagnostic is completely wrong.
-  struct Default { // expected-note {{explicitly marked deleted here}}
+  struct Default {
     struct T {
-      T(int = ExceptionIf<noexcept(Default())::f()); // expected-error {{call to deleted constructor}}
-    } t;
+      T(int = ExceptionIf<noexcept(Default())::f()); // expected-error {{call to implicitly-deleted default constructor}}
+    } t; // expected-note {{has no default constructor}}
+  };
+}
+
+namespace ImplicitDtorExceptionSpec {
+  struct A {
+    virtual ~A();
+
+    struct Inner {
+      ~Inner() throw();
+    };
+    Inner inner;
+  };
+
+  struct B {
+    virtual ~B() {} // expected-note {{here}}
+  };
+
+  struct C : B {
+    virtual ~C() {}
+    A a;
+  };
+
+  struct D : B {
+    ~D(); // expected-error {{more lax than base}}
+    struct E {
+      ~E();
+      struct F {
+        ~F() throw(A);
+      } f;
+    } e;
   };
 }

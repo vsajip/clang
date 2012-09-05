@@ -16,7 +16,7 @@ static void f (char * (*g) (char **, int), char **p, ...) {
 
 
 // PR3172
-} // expected-error {{expected external declaration}}
+} // expected-error {{extraneous closing brace ('}')}}
 
 
 // rdar://6094870
@@ -37,8 +37,9 @@ void test(int a) {
     test(0);
   else
     ;
-  
-  if (x.i == 0))   // expected-error {{expected expression}}
+
+  // PR12595
+  if (x.i == 0))   // expected-error {{extraneous ')' after condition, expected a statement}}
     test(0);
   else
     ;
@@ -49,7 +50,7 @@ void test(int a) {
 char ((((                       /* expected-note {{to match this '('}} */
          *X x ] ))));                    /* expected-error {{expected ')'}} */
 
-;   // expected-warning {{ISO C does not allow an extra ';' outside of a function}}
+;   // expected-warning {{extra ';' outside of a function}}
 
 
 

@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -verify -Wunused -Wunused-parameter -fsyntax-only
+// RUN: %clang_cc1 -verify -Wunused -Wunused-parameter -fsyntax-only -Wno-objc-root-class %s
 
 int printf(const char *, ...);
 
@@ -51,3 +51,5 @@ void test2() {
 }
 @end
 
+// rdar://10777111
+static NSString *x = @"hi"; // expected-warning {{unused variable 'x'}}

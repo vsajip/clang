@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -triple x86_64-apple-darwin10 -emit-llvm -o - %s | FileCheck %s
+// RUN: %clang_cc1 -std=c++11 -triple x86_64-apple-darwin10 -emit-llvm -o - %s | FileCheck %s
 
 template<typename T> struct alloc {};
 template<typename T> using Alloc = alloc<T>;
@@ -10,6 +10,10 @@ template<typename T> void f(Vec<T> v);
 template<typename T> void g(T);
 
 template<template<typename> class F> void h(F<int>);
+
+template<typename,typename,typename> struct S {};
+template<typename T, typename U> using U = S<T, int, U>;
+template<typename...Ts> void h(U<Ts...>, Ts...);
 
 // CHECK: define void @_Z1zv(
 void z() {
@@ -38,4 +42,7 @@ void z() {
   Vec<Vec<int>> VVI;
   g(VVI);
   // CHECK: call void @_Z1gI6vectorIS0_Ii5allocIiEES1_IS3_EEEvT_(
+
+  // CHECK: call void @_Z1hIJidEEv1UIDpT_ES2_
+  h({}, 0, 0.0);
 }

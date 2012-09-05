@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=core,experimental.core -analyzer-store=region -verify %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=core,alpha.core -analyzer-store=region -verify %s
 
 // Test function pointer casts.  Currently we track function addresses using
 // loc::FunctionVal.  Because casts can be arbitrary, do we need to model
@@ -33,9 +33,10 @@ typedef enum {
   RDR10087620Enum   elem;
 }
 @property (readwrite, nonatomic) RDR10087620Enum elem;
+@end
+
 static void
 adium_media_ready_cb(RDR10087620 *InObj)
 {
   InObj.elem |= EEOne;
 }
-@end

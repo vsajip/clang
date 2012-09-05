@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -fsyntax-only -verify -std=c++0x -ffreestanding %s
+// RUN: %clang_cc1 -fcxx-exceptions -fexceptions -fsyntax-only -verify -std=c++11 -ffreestanding %s
 #include <stdint.h>
 
 typedef decltype(nullptr) nullptr_t;
@@ -33,8 +33,10 @@ nullptr_t f(nullptr_t null)
   // Operators
   (void)(null == nullptr);
   (void)(null <= nullptr);
+  (void)(null == 0);
   (void)(null == (void*)0);
   (void)((void*)0 == nullptr);
+  (void)(null <= 0);
   (void)(null <= (void*)0);
   (void)((void*)0 <= nullptr);
   (void)(0 == nullptr);
@@ -44,7 +46,7 @@ nullptr_t f(nullptr_t null)
   (void)(1 > nullptr); // expected-error {{invalid operands to binary expression}}
   (void)(1 != nullptr); // expected-error {{invalid operands to binary expression}}
   (void)(1 + nullptr); // expected-error {{invalid operands to binary expression}}
-  (void)(0 ? nullptr : 0); // expected-error {{non-pointer operand type 'int' incompatible with nullptr}}
+  (void)(0 ? nullptr : 0);
   (void)(0 ? nullptr : (void*)0);
   (void)(0 ? nullptr : A()); // expected-error {{non-pointer operand type 'A' incompatible with nullptr}}
   (void)(0 ? A() : nullptr); // expected-error {{non-pointer operand type 'A' incompatible with nullptr}}
@@ -109,19 +111,30 @@ namespace test3 {
   }
 }
 
-int array0[__is_scalar(nullptr_t)? 1 : -1];
-int array1[__is_pod(nullptr_t)? 1 : -1];
-int array2[sizeof(nullptr_t) == sizeof(void*)? 1 : -1];
+static_assert(__is_scalar(nullptr_t), "");
+static_assert(__is_pod(nullptr_t), "");
+static_assert(sizeof(nullptr_t) == sizeof(void*), "");
 
-// FIXME: when we implement constexpr, this will be testable.
-#if 0
-int relational0[nullptr < nullptr? -1 : 1];
-int relational1[nullptr > nullptr? -1 : 1];
-int relational2[nullptr <= nullptr? 1 : -1];
-int relational3[nullptr >= nullptr? 1 : -1];
-int equality[nullptr == nullptr? 1 : -1];
-int inequality[nullptr != nullptr? -1 : 1];
-#endif
+static_assert(!(nullptr < nullptr), "");
+static_assert(!(nullptr > nullptr), "");
+static_assert(  nullptr <= nullptr, "");
+static_assert(  nullptr >= nullptr, "");
+static_assert(  nullptr == nullptr, "");
+static_assert(!(nullptr != nullptr), "");
+
+static_assert(!(0 < nullptr), "");
+static_assert(!(0 > nullptr), "");
+static_assert(  0 <= nullptr, "");
+static_assert(  0 >= nullptr, "");
+static_assert(  0 == nullptr, "");
+static_assert(!(0 != nullptr), "");
+
+static_assert(!(nullptr < 0), "");
+static_assert(!(nullptr > 0), "");
+static_assert(  nullptr <= 0, "");
+static_assert(  nullptr >= 0, "");
+static_assert(  nullptr == 0, "");
+static_assert(!(nullptr != 0), "");
 
 namespace overloading {
   int &f1(int*);
@@ -160,4 +173,15 @@ namespace templates {
   struct X2 {};
   
   X2<nullptr, nullptr, nullptr, nullptr> x2;
+}
+
+namespace null_pointer_constant {
+
+// Pending implementation of core issue 903, ensure we don't allow any of the
+// C++11 constant evaluation semantics in null pointer constants.
+struct S { int n; };
+constexpr int null() { return 0; }
+void *p = S().n; // expected-error {{cannot initialize}}
+void *q = null(); // expected-error {{cannot initialize}}
+
 }

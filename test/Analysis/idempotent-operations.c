@@ -1,5 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-store=region -analyzer-constraints=range -fblocks -analyzer-opt-analyze-nested-blocks -analyzer-checker=deadcode.IdempotentOperations -verify %s
-// RUN: %clang --analyze -Xclang -analyzer-disable-checker=deadcode.DeadStores -fblocks -Xclang -verify %s -o %t
+// RUN: %clang_cc1 -analyze -analyzer-store=region -analyzer-constraints=range -fblocks -analyzer-opt-analyze-nested-blocks -analyzer-checker=alpha.deadcode.IdempotentOperations -verify %s
 
 // Basic tests
 
@@ -233,5 +232,13 @@ void rdar8601243() {
   char *start = arr;
   start = start + rdar8601243_aux(sizeof(arr) - (arr - start)); // no-warning
   (void) start;
+}
+
+
+float testFloatCast(int i) {
+  float f = i;
+
+  // Don't crash when trying to create a "zero" float.
+  return f - f;
 }
 

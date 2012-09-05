@@ -302,6 +302,7 @@ namespace test14 {
   };
 
   template <class T> class B {
+  public:
     void foo() { return A<long>::foo(); } // expected-error {{'foo' is a private member of 'test14::A<long>'}}
   };
 
@@ -320,10 +321,12 @@ namespace test15 {
   };
 
   template <class T> class B {
+  public:
     void foo() { return A<long>::foo(); } // expected-error {{'foo' is a private member of 'test15::A<long>'}}
   };
 
   template <> class B<float> {
+  public:
     void foo() { return A<float>::foo(); }
     template <class U> void bar(U u) {
       (void) A<float>::foo();
@@ -331,4 +334,28 @@ namespace test15 {
   };
 
   template class B<int>; // expected-note {{in instantiation}}
+}
+
+namespace PR10913 {
+  template<class T> class X;
+
+  template<class T> void f(X<T> *x) {
+    x->member = 0;
+  }
+
+  template<class U, class T> void f2(X<T> *x) {
+    x->member = 0; // expected-error{{'member' is a protected member of 'PR10913::X<int>'}}
+  }
+
+  template<class T> class X {
+    friend void f<T>(X<T> *x);
+    friend void f2<T>(X<int> *x);
+
+  protected:
+    int member; // expected-note{{declared protected here}}
+  };
+
+  template void f(X<int> *);
+  template void f2<int>(X<int> *);
+  template void f2<float>(X<int> *); // expected-note{{in instantiation of function template specialization 'PR10913::f2<float, int>' requested here}}
 }

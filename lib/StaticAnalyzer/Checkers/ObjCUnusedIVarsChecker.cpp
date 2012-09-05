@@ -47,6 +47,15 @@ static void Scan(IvarUsageMap& M, const Stmt *S) {
     return;
   }
 
+  if (const PseudoObjectExpr *POE = dyn_cast<PseudoObjectExpr>(S))
+    for (PseudoObjectExpr::const_semantics_iterator
+        i = POE->semantics_begin(), e = POE->semantics_end(); i != e; ++i) {
+      const Expr *sub = *i;
+      if (const OpaqueValueExpr *OVE = dyn_cast<OpaqueValueExpr>(sub))
+        sub = OVE->getSourceExpr();
+      Scan(M, sub);
+    }
+
   for (Stmt::const_child_iterator I=S->child_begin(),E=S->child_end(); I!=E;++I)
     Scan(M, *I);
 }
@@ -155,13 +164,13 @@ static void checkObjCUnusedIvar(const ObjCImplementationDecl *D,
     if (I->second == Unused) {
       std::string sbuf;
       llvm::raw_string_ostream os(sbuf);
-      os << "Instance variable '" << I->first << "' in class '" << ID
+      os << "Instance variable '" << *I->first << "' in class '" << *ID
          << "' is never used by the methods in its @implementation "
             "(although it may be used by category methods).";
 
       PathDiagnosticLocation L =
         PathDiagnosticLocation::create(I->first, BR.getSourceManager());
-      BR.EmitBasicReport("Unused instance variable", "Optimization",
+      BR.EmitBasicReport(D, "Unused instance variable", "Optimization",
                          os.str(), L);
     }
 }

@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -fsyntax-only -verify -fblocks %s -Wnon-pod-varargs
+// RUN: %clang_cc1 -fsyntax-only -verify -fblocks %s -Wno-error=non-pod-varargs
 
 extern char version[];
 
@@ -119,3 +119,7 @@ void t8(int n, ...) {
   __builtin_va_end(list);
 }
 
+int t9(int n) {
+  // Make sure the error works in potentially-evaluated sizeof
+  return (int)sizeof(*(Helper(Foo()), (int (*)[n])0)); // expected-warning{{cannot pass object of non-POD type}}
+}

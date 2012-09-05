@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -fsyntax-only -verify %s
+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -verify %s -fcxx-exceptions
 
 using X = struct { // ok
 };
@@ -7,9 +7,10 @@ template<typename T> using Y = struct { // expected-error {{can not be defined i
 
 class K {
   virtual ~K();
-  // FIXME: the diagnostic here is really bad
-  operator struct S {} (); // expected-error 2{{}} expected-note {{}}
+  operator struct S {} (); // expected-error{{'K::S' can not be defined in a type specifier}}
 };
+
+struct A {};
 
 void f() {
   int arr[3] = {1,2,3};
@@ -17,10 +18,10 @@ void f() {
   for (struct S { S(int) {} } s : arr) { // expected-error {{types may not be defined in a for range declaration}}
   }
 
-  new struct T {}; // expected-error {{allocation of incomplete type}} expected-note {{forward declaration}}
+  new struct T {}; // expected-error {{'T' can not be defined in a type specifier}}
+  new struct A {}; // expected-error {{'A' can not be defined in a type specifier}}
 
-  // FIXME: the diagnostic here isn't very good
-  try {} catch (struct U {}); // expected-error 3{{}} expected-note 2{{}}
+  try {} catch (struct U {}) {} // expected-error {{'U' can not be defined in a type specifier}}
 
   (void)(struct V { V(int); })0; // expected-error {{'V' can not be defined in a type specifier}}
 

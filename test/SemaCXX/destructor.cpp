@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -fsyntax-only -Wnon-virtual-dtor -Wdelete-non-virtual-dtor -verify %s
+// RUN: %clang_cc1 -std=c++11 -fsyntax-only -Wnon-virtual-dtor -Wdelete-non-virtual-dtor -verify %s
 class A {
 public:
   ~A();
@@ -16,7 +16,7 @@ public:
 
 struct D {
   static void ~D(int, ...) const { } //                          \
-    // expected-error{{type qualifier is not allowed on this function}} \
+    // expected-error{{static member function cannot have 'const' qualifier}} \
     // expected-error{{destructor cannot be declared 'static'}}  \
     // expected-error{{destructor cannot have any parameters}}   \
     // expected-error{{destructor cannot be variadic}} \

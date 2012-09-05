@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=experimental.core -analyzer-checker=deadcode.DeadStores,osx.cocoa.RetainCount -verify %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=alpha.core -analyzer-checker=deadcode.DeadStores,osx.cocoa.RetainCount -fblocks -verify -Wno-objc-root-class %s
 
 typedef signed char BOOL;
 typedef unsigned int NSUInteger;
@@ -76,3 +76,35 @@ void foo_rdar8527823();
 }
 @end
 
+// Don't flag dead stores when a variable is captured in a block used
+// by a property access.
+@interface RDar10591355
+@property (assign) int x;
+@end
+
+RDar10591355 *rdar10591355_aux();
+
+void rdar10591355() {
+  RDar10591355 *p = rdar10591355_aux();
+  ^{ (void) p.x; }();
+}
+
+@interface Radar11059352_1 {
+@private
+    int *_pathString;
+}
+@property int *pathString;
+@end
+@interface Radar11059352 {
+@private
+Radar11059352_1 *_Path;
+}
+@end
+@implementation Radar11059352
+
+- (int*)usePath {
+    Radar11059352_1 *xxxxx = _Path; // no warning
+    int *wp = xxxxx.pathString;
+    return wp;
+}
+@end

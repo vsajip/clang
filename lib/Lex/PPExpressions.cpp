@@ -117,6 +117,10 @@ static bool EvaluateDefined(PPValue &Result, Token &PeekTok, DefinedTracker &DT,
     PP.markMacroAsUsed(Macro);
   }
 
+  // Invoke the 'defined' callback.
+  if (PPCallbacks *Callbacks = PP.getPPCallbacks())
+    Callbacks->Defined(PeekTok);
+
   // If we are in parens, ensure we have a trailing ).
   if (LParenLoc.isValid()) {
     // Consume identifier.
@@ -193,7 +197,7 @@ static bool EvaluateValue(PPValue &Result, Token &PeekTok, DefinedTracker &DT,
     PP.Diag(PeekTok, diag::err_pp_expected_value_in_expr);
     return true;
   case tok::numeric_constant: {
-    llvm::SmallString<64> IntegerBuffer;
+    SmallString<64> IntegerBuffer;
     bool NumberInvalid = false;
     StringRef Spelling = PP.getSpelling(PeekTok, IntegerBuffer, 
                                               &NumberInvalid);
@@ -211,10 +215,14 @@ static bool EvaluateValue(PPValue &Result, Token &PeekTok, DefinedTracker &DT,
     }
     assert(Literal.isIntegerLiteral() && "Unknown ppnumber");
 
+    // Complain about, and drop, any ud-suffix.
+    if (Literal.hasUDSuffix())
+      PP.Diag(PeekTok, diag::err_pp_invalid_udl) << /*integer*/1;
+
     // long long is a C99 feature.
-    if (!PP.getLangOptions().C99 && !PP.getLangOptions().CPlusPlus0x
-        && Literal.isLongLong)
-      PP.Diag(PeekTok, diag::ext_longlong);
+    if (!PP.getLangOpts().C99 && Literal.isLongLong)
+      PP.Diag(PeekTok, PP.getLangOpts().CPlusPlus0x ?
+              diag::warn_cxx98_compat_longlong : diag::ext_longlong);
 
     // Parse the integer literal into Result.
     if (Literal.GetIntegerValue(Result.Val)) {
@@ -247,7 +255,11 @@ static bool EvaluateValue(PPValue &Result, Token &PeekTok, DefinedTracker &DT,
   case tok::wide_char_constant: {   // L'x'
   case tok::utf16_char_constant:    // u'x'
   case tok::utf32_char_constant:    // U'x'
-    llvm::SmallString<32> CharBuffer;
+    // Complain about, and drop, any ud-suffix.
+    if (PeekTok.hasUDSuffix())
+      PP.Diag(PeekTok, diag::err_pp_invalid_udl) << /*character*/0;
+
+    SmallString<32> CharBuffer;
     bool CharInvalid = false;
     StringRef ThisTok = PP.getSpelling(PeekTok, CharBuffer, &CharInvalid);
     if (CharInvalid)
@@ -278,7 +290,7 @@ static bool EvaluateValue(PPValue &Result, Token &PeekTok, DefinedTracker &DT,
     Val = Literal.getValue();
     // Set the signedness. UTF-16 and UTF-32 are always unsigned
     if (!Literal.isUTF16() && !Literal.isUTF32())
-      Val.setIsUnsigned(!PP.getLangOptions().CharIsSigned);
+      Val.setIsUnsigned(!PP.getLangOpts().CharIsSigned);
 
     if (Result.Val.getBitWidth() > Val.getBitWidth()) {
       Result.Val = Val.extend(Result.Val.getBitWidth());
@@ -642,7 +654,7 @@ static bool EvaluateDirectiveSubExpr(PPValue &LHS, unsigned MinPrec,
     case tok::comma:
       // Comma is invalid in pp expressions in c89/c++ mode, but is valid in C99
       // if not being evaluated.
-      if (!PP.getLangOptions().C99 || ValueLive)
+      if (!PP.getLangOpts().C99 || ValueLive)
         PP.Diag(OpLoc, diag::ext_pp_comma_expr)
           << LHS.getRange() << RHS.getRange();
       Res = RHS.Val; // LHS = LHS,RHS -> RHS.
@@ -699,8 +711,6 @@ static bool EvaluateDirectiveSubExpr(PPValue &LHS, unsigned MinPrec,
     LHS.Val = Res;
     LHS.setEnd(RHS.getRange().getEnd());
   }
-
-  return false;
 }
 
 /// EvaluateDirectiveExpression - Evaluate an integer constant expression that
@@ -774,4 +784,3 @@ EvaluateDirectiveExpression(IdentifierInfo *&IfNDefMacro) {
   DisableMacroExpansion = DisableMacroExpansionAtStartOfDirective;
   return ResVal.Val != 0;
 }
-

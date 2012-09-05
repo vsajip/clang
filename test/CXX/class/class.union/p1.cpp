@@ -19,14 +19,16 @@ class Ctor {
 class Ctor2 {
   Ctor2(); // expected-note 3 {{because type 'Ctor2' has a user-declared constructor}}
 };
+class CtorTmpl {
+  template<typename T> CtorTmpl(); // expected-note {{because type 'CtorTmpl' has a user-declared constructor}}
+};
 
 class CopyCtor {
   CopyCtor(CopyCtor &cc) { abort(); } // expected-note 4 {{because type 'CopyCtor' has a user-declared copy constructor}}
 };
 
-// FIXME: this should eventually trigger on the operator's declaration line
-class CopyAssign { // expected-note 4 {{because type 'CopyAssign' has a user-declared copy assignment operator}}
-  CopyAssign& operator=(CopyAssign& CA) { abort(); }
+class CopyAssign {
+  CopyAssign& operator=(CopyAssign& CA) { abort(); } // expected-note 4 {{because type 'CopyAssign' has a user-declared copy assignment operator}}
 };
 
 class Dtor {
@@ -38,6 +40,7 @@ union U1 {
   VirtualBase vbase; // expected-error {{union member 'vbase' has a non-trivial copy constructor}}
   Ctor ctor; // expected-error {{union member 'ctor' has a non-trivial constructor}}
   Ctor2 ctor2; // expected-error {{union member 'ctor2' has a non-trivial constructor}}
+  CtorTmpl ctortmpl; // expected-error {{union member 'ctortmpl' has a non-trivial constructor}}
   CopyCtor copyctor; // expected-error {{union member 'copyctor' has a non-trivial copy constructor}}
   CopyAssign copyassign; // expected-error {{union member 'copyassign' has a non-trivial copy assignment operator}}
   Dtor dtor; // expected-error {{union member 'dtor' has a non-trivial destructor}}
@@ -91,8 +94,9 @@ union U3 {
 };
 
 union U4 {
-  static int i1; // expected-error {{static data member 'i1' not allowed in union}}
+  static int i1; // expected-warning {{static data member 'i1' in union is a C++11 extension}}
 };
+int U4::i1 = 10;
 
 union U5 {
   int& i1; // expected-error {{union member 'i1' has reference type 'int &'}}

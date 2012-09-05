@@ -27,6 +27,7 @@ static const LangAS::Map DefaultAddrSpaceMap = { 0 };
 TargetInfo::TargetInfo(const std::string &T) : Triple(T) {
   // Set defaults.  Defaults are set for a 32-bit RISC platform, like PPC or
   // SPARC.  These should be overridden by concrete targets as needed.
+  BigEndian = true;
   TLSSupported = true;
   NoAsmVariants = false;
   PointerWidth = PointerAlign = 32;
@@ -34,6 +35,9 @@ TargetInfo::TargetInfo(const std::string &T) : Triple(T) {
   IntWidth = IntAlign = 32;
   LongWidth = LongAlign = 32;
   LongLongWidth = LongLongAlign = 64;
+  SuitableAlign = 64;
+  HalfWidth = 16;
+  HalfAlign = 16;
   FloatWidth = 32;
   FloatAlign = 32;
   DoubleWidth = 64;
@@ -42,6 +46,8 @@ TargetInfo::TargetInfo(const std::string &T) : Triple(T) {
   LongDoubleAlign = 64;
   LargeArrayMinWidth = 0;
   LargeArrayAlign = 0;
+  MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
+  MaxVectorAlign = 0;
   SizeType = UnsignedLong;
   PtrDiffType = SignedLong;
   IntMaxType = SignedLongLong;
@@ -53,9 +59,11 @@ TargetInfo::TargetInfo(const std::string &T) : Triple(T) {
   Char32Type = UnsignedInt;
   Int64Type = SignedLongLong;
   SigAtomicType = SignedInt;
+  UseSignedCharForObjCBool = true;
   UseBitFieldTypeAlignment = true;
   UseZeroLengthBitfieldAlignment = false;
   ZeroLengthBitfieldBoundary = 0;
+  HalfFormat = &llvm::APFloat::IEEEhalf;
   FloatFormat = &llvm::APFloat::IEEEsingle;
   DoubleFormat = &llvm::APFloat::IEEEdouble;
   LongDoubleFormat = &llvm::APFloat::IEEEdouble;
@@ -69,6 +77,9 @@ TargetInfo::TargetInfo(const std::string &T) : Triple(T) {
 
   // Default to no types using fpret.
   RealTypeUsesObjCFPRet = 0;
+
+  // Default to not using fp2ret for __Complex long double
+  ComplexLongDoubleUsesFP2Ret = false;
 
   // Default to using the Itanium ABI.
   CXXABI = CXXABI_Itanium;

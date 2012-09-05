@@ -1,9 +1,8 @@
-set(LLVM_USED_LIBS clangBasic clangAST clangParse clangFrontend clangRewrite)
-
 add_clang_library(clangARCMigrate
   ARCMT.cpp
   ARCMTActions.cpp
   FileRemapper.cpp
+  ObjCMT.cpp
   PlistReporter.cpp
   TransAPIUses.cpp
   TransARCAssign.cpp
@@ -12,6 +11,8 @@ add_clang_library(clangARCMigrate
   TransEmptyStatementsAndDealloc.cpp
   TransformActions.cpp
   Transforms.cpp
+  TransGCAttrs.cpp
+  TransGCCalls.cpp
   TransProperties.cpp
   TransRetainReleaseDealloc.cpp
   TransUnbridgedCasts.cpp
@@ -22,5 +23,20 @@ add_clang_library(clangARCMigrate
 add_dependencies(clangARCMigrate
   ClangAttrClasses
   ClangAttrList
+  ClangAttrParsedAttrList
+  ClangCommentNodes
   ClangDeclNodes
-  ClangStmtNodes)
+  ClangDiagnosticCommon
+  ClangDiagnosticGroups
+  ClangDiagnosticSema
+  ClangStmtNodes
+  )
+
+target_link_libraries(clangARCMigrate
+  clangBasic
+  clangAST
+  clangParse
+  clangFrontend
+  clangRewriteCore
+  clangRewriteFrontend
+  )

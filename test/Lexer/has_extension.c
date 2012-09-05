@@ -28,3 +28,17 @@ int has_c_generic_selections();
 int no_c_generic_selections();
 #endif
 
+// CHECK-PED-NONE: has_c_alignas
+// CHECK-PED-ERR: no_c_alignas
+#if __has_extension(c_alignas)
+int has_c_alignas();
+#else
+int no_c_alignas();
+#endif
+
+// Arbitrary feature to test that the extension name can be surrounded with
+// double underscores.
+// CHECK-PED-NONE: has_double_underscores
+#if __has_extension(__c_alignas__)
+int has_double_underscores();
+#endif

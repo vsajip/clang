@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -triple i386-pc-linux-gnu -verify -fsyntax-only
+// RUN: %clang_cc1 %s -Wno-private-extern -triple i386-pc-linux-gnu -verify -fsyntax-only
 
 void f() {
   int i;
@@ -21,7 +21,7 @@ void clobbers() {
   asm ("nop" : : : "0", "%0", "#0");
   asm ("nop" : : : "foo"); // expected-error {{unknown register name 'foo' in asm}}
   asm ("nop" : : : "52");
-  asm ("nop" : : : "54"); // expected-error {{unknown register name '54' in asm}}
+  asm ("nop" : : : "104"); // expected-error {{unknown register name '104' in asm}}
   asm ("nop" : : : "-1"); // expected-error {{unknown register name '-1' in asm}}
   asm ("nop" : : : "+1"); // expected-error {{unknown register name '+1' in asm}}
 }

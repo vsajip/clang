@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -std=c++0x -triple x86_64-apple-darwin10 %s -emit-llvm -o %t
+// RUN: %clang_cc1 -std=c++11 -triple x86_64-apple-darwin10 %s -emit-llvm -o %t
 // RUN: FileCheck %s < %t
 // RUN: FileCheck -check-prefix=CHECK-PR10720 %s < %t
 
@@ -131,6 +131,26 @@ namespace rdar9694300 {
   }
 }
 
+// Check that we emit a zero initialization step for list-value-initialization
+// which calls a trivial default constructor.
+namespace PR13273 {
+  struct U {
+    int t;
+    U() = default;
+  };
+
+  struct S : U {
+    S() = default;
+  };
+
+  // CHECK: define {{.*}}@_ZN7PR132731fEv(
+  int f() {
+    // CHECK-NOT: }
+    // CHECK: llvm.memset{{.*}}i8 0
+    return (new S{})->t;
+  }
+}
+
 template<typename T>
 struct X {
   X(const X &);
@@ -201,7 +221,7 @@ namespace PR10720 {
     pair2(const pair2&) = default;
   };
 
-  struct pair {
+  struct pair : X { // Make the copy constructor non-trivial, so we actually generate it.
     int second[4];
     // CHECK-PR10720: define linkonce_odr void @_ZN7PR107204pairC2ERKS0_
     // CHECK-PR10720-NOT: ret
@@ -220,4 +240,3 @@ namespace PR10720 {
   }
 
 }
-

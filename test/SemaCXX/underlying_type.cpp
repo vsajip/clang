@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -ffreestanding -fsyntax-only -verify -std=c++0x %s
+// RUN: %clang_cc1 -ffreestanding -fsyntax-only -verify -std=c++11 %s
 
 #include "limits.h"
 
@@ -35,3 +35,9 @@ static_assert(is_same_type<underlying_type<f>::type, char>::value,
               "f has the wrong underlying type in the template");
 
 underlying_type<int>::type e; // expected-note {{requested here}}
+
+using uint = unsigned;
+enum class foo : uint { bar };
+ 
+static_assert(is_same_type<underlying_type<foo>::type, unsigned>::value,
+              "foo has the wrong underlying type");

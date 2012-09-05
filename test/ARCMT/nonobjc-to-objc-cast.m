@@ -1,13 +1,9 @@
 // RUN: %clang_cc1 -triple x86_64-apple-darwin10 -fsyntax-only -fobjc-arc -x objective-c %s.result
 // RUN: arcmt-test --args -triple x86_64-apple-darwin10 -fsyntax-only -x objective-c %s > %t
 // RUN: diff %t %s.result
+// DISABLE: mingw32
 
 #include "Common.h"
-
-@interface NSString : NSObject
--(id)string;
--(id)newString;
-@end
 
 typedef const struct __CFString * CFStringRef;
 extern const CFStringRef kUTTypePlainText;
@@ -19,6 +15,18 @@ typedef const struct __CFUUID * CFUUIDRef;
 extern const CFAllocatorRef kCFAllocatorDefault;
 
 extern CFStringRef CFUUIDCreateString(CFAllocatorRef alloc, CFUUIDRef uuid);
+
+struct StrS {
+  CFStringRef sref_member;
+};
+
+@interface NSString : NSObject {
+  CFStringRef sref;
+  struct StrS *strS;
+}
+-(id)string;
+-(id)newString;
+@end
 
 void f(BOOL b, id p) {
   NSString *str = (NSString *)kUTTypePlainText;
@@ -38,6 +46,16 @@ void f(BOOL b, id p) {
   CFStringRef str2 = self;
   return self;
 }
+@end
+
+@implementation NSString
+-(id)string {
+  if (0)
+    return sref;
+  else
+    return strS->sref_member;
+}
+-(id)newString { return 0; }
 @end
 
 extern void consumeParam(CFStringRef CF_CONSUMED p);

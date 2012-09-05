@@ -2,8 +2,8 @@
 
 #include "not exist" // expected-error{{'not exist' file not found}}
 
-class AnalysisContext {};
-static ControlFlowKind CheckFallThrough(AnalysisContext &AC) {
-  if (const AsmStmt *AS = dyn_cast<AsmStmt>(S)) {}
+class AnalysisDeclContext {};
+static ControlFlowKind CheckFallThrough(AnalysisDeclContext &AC) {
+  if (const GCCAsmStmt *AS = dyn_cast<GCCAsmStmt>(S)) {}
   bool NoReturnEdge = false;
 }

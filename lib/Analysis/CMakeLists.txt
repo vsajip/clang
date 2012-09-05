@@ -1,13 +1,14 @@
-set(LLVM_USED_LIBS clangBasic clangAST clangIndex)
-
 add_clang_library(clangAnalysis
-  AnalysisContext.cpp
+  AnalysisDeclContext.cpp
+  CallGraph.cpp
   CFG.cpp
   CFGReachabilityAnalysis.cpp
   CFGStmtMap.cpp
   CocoaConventions.cpp
+  Dominators.cpp
   FormatString.cpp
   LiveVariables.cpp
+  PostOrderCFGView.cpp
   PrintfFormatString.cpp
   ProgramPoint.cpp
   PseudoConstantAnalysis.cpp
@@ -17,5 +18,17 @@ add_clang_library(clangAnalysis
   UninitializedValues.cpp
   )
 
-add_dependencies(clangAnalysis ClangAttrClasses ClangAttrList
-                 ClangDiagnosticAnalysis ClangDeclNodes ClangStmtNodes)
+add_dependencies(clangAnalysis
+  ClangAttrClasses
+  ClangAttrList
+  ClangCommentNodes
+  ClangDiagnosticCommon
+  ClangDeclNodes
+  ClangDiagnosticAnalysis
+  ClangStmtNodes
+  )
+
+target_link_libraries(clangAnalysis
+  clangBasic
+  clangAST
+  )

@@ -1,28 +1,53 @@
 // RUN: %clang_cc1 -arcmt-check -verify -triple x86_64-apple-darwin10 %s
+// DISABLE: mingw32
 
 #include "Common.h"
 
-@interface NSString : NSObject
+typedef const struct __CFString * CFStringRef;
+typedef const void * CFTypeRef;
+CFTypeRef CFBridgingRetain(id X);
+id CFBridgingRelease(CFTypeRef);
+
+struct StrS {
+  CFStringRef sref_member;
+};
+
+@interface NSString : NSObject {
+  CFStringRef sref;
+  struct StrS *strS;
+}
 -(id)string;
 -(id)newString;
 @end
 
-typedef const struct __CFString * CFStringRef;
+@implementation NSString
+-(id)string {
+  if (0)
+    return sref;
+  else
+    return strS->sref_member;
+}
+-(id)newString {
+  return sref; // expected-error {{implicit conversion of C pointer type 'CFStringRef' (aka 'const struct __CFString *') to Objective-C pointer type 'id' requires a bridged cast}} \
+    // expected-note{{use __bridge to convert directly (no change in ownership)}} \
+    // expected-note{{use CFBridgingRelease call to transfer ownership of a +1 'CFStringRef' (aka 'const struct __CFString *') into ARC}}
+}
+@end
 
 void f(BOOL b) {
   CFStringRef cfstr;
   NSString *str = (NSString *)cfstr; // expected-error {{cast of C pointer type 'CFStringRef' (aka 'const struct __CFString *') to Objective-C pointer type 'NSString *' requires a bridged cast}} \
     // expected-note{{use __bridge to convert directly (no change in ownership)}} \
-    // expected-note{{use __bridge_transfer to transfer ownership of a +1 'CFStringRef' (aka 'const struct __CFString *') into ARC}}
-  void *vp = str;  // expected-error {{disallowed}}
+    // expected-note{{use CFBridgingRelease call to transfer ownership of a +1 'CFStringRef' (aka 'const struct __CFString *') into ARC}}
+  void *vp = str;  // expected-error {{requires a bridged cast}} expected-note {{use CFBridgingRetain call}} expected-note {{use __bridge}}
 }
 
 void f2(NSString *s) {
   CFStringRef ref;
   ref = [(CFStringRef)[s string] retain]; // expected-error {{cast of Objective-C pointer type 'id' to C pointer type 'CFStringRef' (aka 'const struct __CFString *') requires a bridged cast}} \
-    // expected-error {{ bad receiver type 'CFStringRef' (aka 'const struct __CFString *')}} \
+    // expected-error {{bad receiver type 'CFStringRef' (aka 'const struct __CFString *')}} \
     // expected-note{{use __bridge to convert directly (no change in ownership)}} \
-    // expected-note{{use __bridge_retained to make an ARC object available as a +1 'CFStringRef' (aka 'const struct __CFString *')}}
+    // expected-note{{use CFBridgingRetain call to make an ARC object available as a +1 'CFStringRef' (aka 'const struct __CFString *')}}
 }
 
 CFStringRef f3() {
