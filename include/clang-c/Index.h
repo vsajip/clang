@@ -2570,7 +2570,8 @@ enum CXTypeKind {
   CXType_FunctionNoProto = 110,
   CXType_FunctionProto = 111,
   CXType_ConstantArray = 112,
-  CXType_Vector = 113
+  CXType_Vector = 113,
+  CXType_IncompleteArray = 114
 };
 
 /**
@@ -2656,6 +2657,28 @@ CINDEX_LINKAGE int clang_Cursor_getNumArguments(CXCursor C);
  * exceeds the number of arguments, an invalid cursor is returned.
  */
 CINDEX_LINKAGE CXCursor clang_Cursor_getArgument(CXCursor C, unsigned i);
+
+/**
+ * \brief Retrieve the integer value associated with a cursor.
+ */
+CINDEX_LINKAGE long long clang_getConstantIntegerValue(CXCursor C);
+
+/**
+ * \determine Determine whether a declaration is a function declaration
+ * which specifies inlining.
+ *
+ * \returns true if inlining was specified, else false.
+ */
+CINDEX_LINKAGE int clang_isInlineSpecified(CXCursor C);
+
+/**
+ * \brief Retrieve a bit-field width from a CXCursor
+ * (if appropriate).
+ *
+ * If the cursor is not for a field declaration of a bitfield,
+ * zero is returned.
+ */
+CINDEX_LINKAGE int clang_getBitfieldWidth(CXCursor C);
 
 /**
  * \brief Determine whether two CXTypes represent the same type.
@@ -2793,6 +2816,22 @@ CINDEX_LINKAGE CXType clang_getArrayElementType(CXType T);
  * If a non-array type is passed in, -1 is returned.
  */
 CINDEX_LINKAGE long long clang_getArraySize(CXType T);
+
+/**
+ * \brief Return the number of arguments for a function with a
+ * prototype.
+ *
+ * If an invalid type is passed in, -1 is returned.
+ */
+CINDEX_LINKAGE int clang_getFunctionArgumentCount(CXType T);
+
+/**
+ * \brief Return the type of the i-th argument for a function with a
+ * prototype.
+ *
+ * If an invalid type or index is passed in, an invalid type is returned.
+ */
+CINDEX_LINKAGE CXType clang_getFunctionArgumentType(CXType T, unsigned i);
 
 /**
  * \brief Returns 1 if the base class specified by the cursor with kind

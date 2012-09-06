@@ -3346,7 +3346,7 @@ CXString clang_getCursorDisplayName(CXCursor C) {
 }
 
 long long clang_getConstantIntegerValue(CXCursor C) {
-  long long result = 0;
+  long long result = LLONG_MIN;
 
   if (C.kind == CXCursor_EnumConstantDecl) {
     Decl * D = getCursorDecl(C);
@@ -3366,9 +3366,10 @@ long long clang_getConstantIntegerValue(CXCursor C) {
     if (E->getType()->isIntegralOrEnumerationType()) {
       CXTranslationUnit tu = getCursorTU(C);
       ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
-      llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+      llvm::APSInt Value;
 
-      result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+      if (E->EvaluateAsInt(Value, CXXUnit->getASTContext()))
+        result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
     }
   }
   return result;
@@ -3399,9 +3400,10 @@ int clang_getBitfieldWidth(CXCursor C) {
         Expr * E = FD->getBitWidth();
         CXTranslationUnit tu = getCursorTU(C);
         ASTUnit *CXXUnit = static_cast<ASTUnit*> (tu->TUData);
-        llvm::APSInt Value = E->EvaluateAsInt(CXXUnit->getASTContext());
+        llvm::APSInt Value;
 
-        result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+        if (E->EvaluateAsInt(Value, CXXUnit->getASTContext()))
+          result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
       }
     }
   }

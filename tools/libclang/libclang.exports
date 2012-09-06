@@ -159,6 +159,8 @@ clang_getExpansionLocation
 clang_getFile
 clang_getFileName
 clang_getFileTime
+clang_getFunctionArgumentCount
+clang_getFunctionArgumentType
 clang_getFunctionTypeCallingConv
 clang_getIBOutletCollectionType
 clang_getIncludedFile
@@ -222,6 +224,7 @@ clang_isDeclaration
 clang_isExpression
 clang_isFileMultipleIncludeGuarded
 clang_isFunctionTypeVariadic
+clang_isInlineSpecified
 clang_isInvalid
 clang_isPODType
 clang_isPreprocessing
