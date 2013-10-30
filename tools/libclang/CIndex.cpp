@@ -3354,7 +3354,7 @@ long long clang_getConstantIntegerValue(CXCursor C) {
     if (isa<EnumConstantDecl> (D)) { // this check may not be needed
       llvm::APSInt Value = static_cast<EnumConstantDecl *> (D)->getInitVal();
 
-      result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+      result = Value.extOrTrunc(Value.getBitWidth()).getSExtValue();
     }
   } else if (C.kind == CXCursor_UnexposedAttr) {
     Attr * A = getCursorAttr(C);
@@ -3369,7 +3369,7 @@ long long clang_getConstantIntegerValue(CXCursor C) {
       llvm::APSInt Value;
 
       if (E->EvaluateAsInt(Value, CXXUnit->getASTContext()))
-        result = Value.extOrTrunc(Value.getBitWidth()).getZExtValue();
+        result = Value.extOrTrunc(Value.getBitWidth()).getSExtValue();
     }
   }
   return result;
