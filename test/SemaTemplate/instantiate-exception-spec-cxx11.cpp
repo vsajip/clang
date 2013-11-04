@@ -34,18 +34,6 @@ template<> struct S<10> {};
 void (*pFn2)() noexcept = &S<0>::recurse; // expected-note {{instantiation of exception spec}} expected-error {{not superset}}
 
 
-template<typename T> T go(T a) noexcept(noexcept(go(a))); // \
-// expected-error 16{{call to function 'go' that is neither visible}} \
-// expected-note 16{{'go' should be declared prior to the call site}} \
-// expected-error {{recursive template instantiation exceeded maximum depth of 16}} \
-// expected-error {{use of undeclared identifier 'go'}} \
-
-void f() {
-  int k = go(0); // \
-  // expected-note {{in instantiation of exception specification for 'go<int>' requested here}}
-}
-
-
 namespace dr1330_example {
   template <class T> struct A {
     void f(...) throw (typename T::X); // expected-error {{'int'}}
@@ -56,13 +44,14 @@ namespace dr1330_example {
     A<int>().f(42);
   }
 
+  struct S {
+    template<typename T>
+    static int f() noexcept(noexcept(A<T>().f("boo!"))) { return 0; } // \
+    // expected-note {{instantiation of exception spec}}
+    typedef decltype(f<S>()) X;
+  };
+
   int test2() {
-    struct S {
-      template<typename T>
-      static int f() noexcept(noexcept(A<T>().f("boo!"))) { return 0; } // \
-      // expected-note {{instantiation of exception spec}}
-      typedef decltype(f<S>()) X;
-    };
     S().f<S>(); // ok
     S().f<int>(); // expected-note {{instantiation of exception spec}}
   }

@@ -246,9 +246,6 @@ _Atomic(struct foo) bigAtomic;
 void structAtomicStore() {
   // CHECK: @structAtomicStore
   struct foo f = {0};
-  __c11_atomic_store(&bigAtomic, f, 5);
-  // CHECK: call void @__atomic_store(i32 512, i8* bitcast ({{.*}} @bigAtomic to i8*),
-
   struct bar b = {0};
   __atomic_store(&smallThing, &b, 5);
   // CHECK: call void @__atomic_store(i32 3, i8* {{.*}} @smallThing
@@ -258,13 +255,11 @@ void structAtomicStore() {
 }
 void structAtomicLoad() {
   // CHECK: @structAtomicLoad
-  struct foo f = __c11_atomic_load(&bigAtomic, 5);
-  // CHECK: call void @__atomic_load(i32 512, i8* bitcast ({{.*}} @bigAtomic to i8*),
-
   struct bar b;
   __atomic_load(&smallThing, &b, 5);
   // CHECK: call void @__atomic_load(i32 3, i8* {{.*}} @smallThing
 
+  struct foo f = {0};
   __atomic_load(&bigThing, &f, 5);
   // CHECK: call void @__atomic_load(i32 512, i8* {{.*}} @bigThing
 }
@@ -309,6 +304,15 @@ void atomic_init_foo()
 
   // CHECK-NOT: atomic
   // CHECK: }
+}
+
+// CHECK: @invalid_atomic
+void invalid_atomic(_Atomic(int) *i) {
+  __c11_atomic_store(i, 1, memory_order_consume);
+  __c11_atomic_store(i, 1, memory_order_acquire);
+  __c11_atomic_store(i, 1, memory_order_acq_rel);
+  __c11_atomic_load(i, memory_order_release);
+  __c11_atomic_load(i, memory_order_acq_rel);
 }
 
 #endif

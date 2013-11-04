@@ -14,6 +14,8 @@ add_clang_library(clangStaticAnalyzerCore
   CheckerHelpers.cpp
   CheckerManager.cpp
   CheckerRegistry.cpp
+  CommonBugCategories.cpp
+  ConstraintManager.cpp
   CoreEngine.cpp
   Environment.cpp
   ExplodedGraph.cpp
@@ -37,7 +39,6 @@ add_clang_library(clangStaticAnalyzerCore
   Store.cpp
   SubEngine.cpp
   SymbolManager.cpp
-  TextPathDiagnostics.cpp
   )
 
 add_dependencies(clangStaticAnalyzerCore

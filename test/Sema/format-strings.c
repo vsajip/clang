@@ -58,6 +58,9 @@ def"
   printf("%*d", (unsigned) 1, 1); // no-warning  
 }
 
+// When calling a non-variadic format function (vprintf, vscanf, NSLogv, ...),
+// warn only if the format string argument is a parameter that is not itself
+// declared as a format string with compatible format.
 __attribute__((__format__ (__printf__, 2, 4)))
 void check_string_literal2( FILE* fp, const char* s, char *buf, ... ) {
   char * b;
@@ -117,6 +120,7 @@ void check_writeback_specifier()
   printf("%qn", (int*)0); // expected-warning{{format specifies type 'long long *' but the argument has type 'int *'}}
 
   printf("%Ln", 0); // expected-warning{{length modifier 'L' results in undefined behavior or no effect with 'n' conversion specifier}}
+  // expected-note@-1{{did you mean to use 'll'?}}
 }
 
 void check_invalid_specifier(FILE* fp, char *buf)
@@ -531,17 +535,6 @@ void pr9751() {
          0.0); // expected-warning{{format specifies}}
 }
 
-// PR 9466: clang: doesn't know about %Lu, %Ld, and %Lx 
-void printf_longlong(long long x, unsigned long long y) {
-  printf("%Ld", y); // no-warning
-  printf("%Lu", y); // no-warning
-  printf("%Lx", y); // no-warning
-  printf("%Ld", x); // no-warning
-  printf("%Lu", x); // no-warning
-  printf("%Lx", x); // no-warning
-  printf("%Ls", "hello"); // expected-warning {{length modifier 'L' results in undefined behavior or no effect with 's' conversion specifier}}
-}
-
 void __attribute__((format(strfmon,1,2))) monformat(const char *fmt, ...);
 void __attribute__((format(strftime,1,0))) dateformat(const char *fmt);
 
@@ -598,3 +591,13 @@ void test_qualifiers(volatile int *vip, const int *cip,
   printf("%n", (ip_t)0); // No warning.
   printf("%n", (cip_t)0); // expected-warning{{format specifies type 'int *' but the argument has type 'cip_t' (aka 'const int *')}}
 }
+
+#pragma GCC diagnostic ignored "-Wformat-nonliteral"
+#pragma GCC diagnostic warning "-Wformat-security"
+// <rdar://problem/14178260>
+extern void test_format_security_extra_args(const char*, int, ...)
+    __attribute__((__format__(__printf__, 1, 3)));
+void test_format_security_pos(char* string) {
+  test_format_security_extra_args(string, 5); // expected-warning {{format string is not a string literal (potentially insecure)}}
+}
+#pragma GCC diagnostic warning "-Wformat-nonliteral"

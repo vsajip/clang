@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -x objective-c -fsyntax-only -fobjc-default-synthesize-properties -verify -Wno-objc-root-class %s
-// RUN: %clang_cc1 -x objective-c++ -fsyntax-only -fobjc-default-synthesize-properties -verify -Wno-objc-root-class %s
+// RUN: %clang_cc1 -x objective-c -fsyntax-only -verify -Wno-objc-root-class %s
+// RUN: %clang_cc1 -x objective-c++ -fsyntax-only -verify -Wno-objc-root-class %s
 // rdar://8843851
 
 @interface StopAccessingIvarsDirectlyExample
@@ -41,7 +41,7 @@
 // Test3
 @interface Test3 
 { 
-  id uid;  // expected-note {{ivar is declared here}}
+  id uid;  // expected-note {{instance variable is declared here}}
 } 
 @property (readwrite, assign) id uid;  // expected-note {{property declared here}}
 @end
@@ -119,7 +119,7 @@ int* _object;
 @interface Test8
 {
   id _y;
-  id y; // expected-note {{ivar is declared here}}
+  id y; // expected-note {{instance variable is declared here}}
 }
 @property(copy) id y; // expected-note {{property declared here}}
 @end

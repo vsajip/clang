@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
+// expected-no-diagnostics
 
 namespace test0 {
   template <class T> class A {
@@ -95,7 +96,7 @@ namespace test4 {
 
 namespace test5 {
   template<template <class> class T> struct A {
-    template<template <class> class T> friend void A<T>::foo();
+    template<template <class> class U> friend void A<U>::foo();
   };
 
   template <class> struct B {};

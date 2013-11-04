@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -verify -fsyntax-only -triple i386-linux -pedantic %s
+// RUN: %clang_cc1 -verify -fsyntax-only -triple i386-linux -pedantic -fcxx-exceptions -fexceptions %s
 
 const char const *x10; // expected-warning {{duplicate 'const' declaration specifier}}
 
@@ -123,6 +123,114 @@ void CodeCompleteConsumer::() { // expected-error {{xpected unqualified-id}}
 
 // PR4111
 void f(sqrgl); // expected-error {{unknown type name 'sqrgl'}}
+
+// PR9903
+struct S {
+  typedef void a() { }; // expected-error {{function definition declared 'typedef'}}
+  typedef void c() try { } catch(...) { } // expected-error {{function definition declared 'typedef'}}
+  int n, m;
+  typedef S() : n(1), m(2) { } // expected-error {{function definition declared 'typedef'}}
+};
+
+
+namespace TestIsValidAfterTypeSpecifier {
+struct s {} v;
+
+namespace a {
+struct s operator++(struct s a)
+{ return a; }
+}
+
+namespace b {
+// The newline after s should make no difference.
+struct s
+operator++(struct s a)
+{ return a; }
+}
+
+struct X {
+  struct s
+  friend f();
+  struct s
+  virtual f();
+};
+
+struct s
+&r0 = v;
+struct s
+bitand r2 = v;
+
+}
+
+struct DIE {
+  void foo() {}
+};
+
+void test (DIE die, DIE *Die, DIE INT, DIE *FLOAT) {
+  DIE.foo();  // expected-error {{cannot use dot operator on a type}}
+  die.foo();
+
+  DIE->foo();  // expected-error {{cannot use arrow operator on a type}}
+  Die->foo();
+
+  int.foo();  // expected-error {{cannot use dot operator on a type}}
+  INT.foo();
+
+  float->foo();  // expected-error {{cannot use arrow operator on a type}}
+  FLOAT->foo();
+}
+
+namespace PR15017 {
+  template<typename T = struct X { int i; }> struct S {}; // expected-error {{'PR15017::X' can not be defined in a type specifier}}
+}
+
+// Ensure we produce at least some diagnostic for attributes in C++98.
+[[]] struct S; // expected-error 2{{}}
+
+namespace test7 {
+  struct Foo {
+    void a();
+    void b();
+  };
+
+  void Foo::
+  // Comment!
+  a() {}
+
+
+  void Foo::  // expected-error {{expected unqualified-id}}
+  // Comment!
+}
+
+void test8() {
+  struct {} o;
+  // This used to crash.
+  (&o)->(); // expected-error{{expected unqualified-id}}
+}
+
+namespace PR5066 {
+  template<typename T> struct X {};
+  X<int N> x; // expected-error {{type-id cannot have a name}}
+
+  using T = int (*T)(); // expected-error {{type-id cannot have a name}} expected-warning {{C++11}}
+}
+
+namespace PR17255 {
+void foo() {
+  typename A::template B<>; // expected-error {{use of undeclared identifier 'A'}} \
+                            // expected-error {{expected a qualified name after 'typename'}} \
+                            // expected-warning {{'template' keyword outside of a template}}
+}
+}
+
+namespace PR17567 {
+  struct Foobar { // expected-note 2{{declared here}}
+    FooBar(); // expected-error {{missing return type for function 'FooBar'; did you mean the constructor name 'Foobar'?}}
+    ~FooBar(); // expected-error {{expected the class name after '~' to name a destructor}}
+  };
+  FooBar::FooBar() {} // expected-error {{undeclared}} expected-error {{missing return type}}
+  FooBar::~FooBar() {} // expected-error {{undeclared}} expected-error {{expected the class name}}
+}
 
 // PR8380
 extern ""      // expected-error {{unknown linkage language}}

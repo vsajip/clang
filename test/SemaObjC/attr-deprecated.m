@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -verify -Wno-objc-root-class %s
+// RUN: %clang_cc1 -x objective-c++ -fsyntax-only -verify -Wno-objc-root-class %s
 
 @interface A {
   int X __attribute__((deprecated)); // expected-note 2 {{declared here}}
@@ -107,7 +108,8 @@ __attribute ((deprecated))
 
 
 @interface Test2
-@property int test2 __attribute__((deprecated)); // expected-note 4 {{declared here}}
+@property int test2 __attribute__((deprecated)); // expected-note 4 {{declared here}} \
+						 // expected-note 2 {{property 'test2' is declared deprecated here}}
 @end
 
 void test(Test2 *foo) {
@@ -133,4 +135,22 @@ typedef struct {
 }
 @property footype c; // expected-warning {{'footype' is deprecated}}
 @property footype d __attribute((deprecated));
+@end
+
+// rdar://13569424
+@interface NewI
++(void)cmeth;
+@end
+
+typedef NewI DeprI __attribute__((deprecated("blah"))); // expected-note 4 {{'DeprI' declared here}}
+
+@interface SI : DeprI // expected-warning {{'DeprI' is deprecated: blah}}
+-(DeprI*)meth; // expected-warning {{'DeprI' is deprecated: blah}}
+@end
+
+@implementation SI
+-(DeprI*)meth { // expected-warning {{'DeprI' is deprecated: blah}}
+  [DeprI cmeth]; // expected-warning {{'DeprI' is deprecated: blah}}
+  return 0;
+}
 @end

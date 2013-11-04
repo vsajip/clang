@@ -15,12 +15,13 @@
 #ifndef CLANG_LITERALSUPPORT_H
 #define CLANG_LITERALSUPPORT_H
 
+#include "clang/Basic/CharInfo.h"
 #include "clang/Basic/LLVM.h"
+#include "clang/Basic/TokenKinds.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/SmallString.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/DataTypes.h"
-#include "clang/Basic/TokenKinds.h"
-#include <cctype>
 
 namespace clang {
 
@@ -48,8 +49,9 @@ class NumericLiteralParser {
   bool saw_exponent, saw_period, saw_ud_suffix;
 
 public:
-  NumericLiteralParser(const char *begin, const char *end,
-                       SourceLocation Loc, Preprocessor &PP);
+  NumericLiteralParser(StringRef TokSpelling,
+                       SourceLocation TokLoc,
+                       Preprocessor &PP);
   bool hadError;
   bool isUnsigned;
   bool isLong;        // This is *not* set for long long.
@@ -77,6 +79,8 @@ public:
     return SuffixBegin - ThisTokBegin;
   }
 
+  static bool isValidUDSuffix(const LangOptions &LangOpts, StringRef Suffix);
+
   unsigned getRadix() const { return radix; }
 
   /// GetIntegerValue - Convert this numeric literal value to an APInt that
@@ -96,10 +100,18 @@ private:
 
   void ParseNumberStartingWithZero(SourceLocation TokLoc);
 
+  static bool isDigitSeparator(char C) { return C == '\''; }
+
+  enum CheckSeparatorKind { CSK_BeforeDigits, CSK_AfterDigits };
+
+  /// \brief Ensure that we don't have a digit separator here.
+  void checkSeparator(SourceLocation TokLoc, const char *Pos,
+                      CheckSeparatorKind IsAfterDigits);
+
   /// SkipHexDigits - Read and skip over any hex digits, up to End.
   /// Return a pointer to the first non-hex digit or End.
   const char *SkipHexDigits(const char *ptr) {
-    while (ptr != ThisTokEnd && isxdigit(*ptr))
+    while (ptr != ThisTokEnd && (isHexDigit(*ptr) || isDigitSeparator(*ptr)))
       ptr++;
     return ptr;
   }
@@ -107,7 +119,8 @@ private:
   /// SkipOctalDigits - Read and skip over any octal digits, up to End.
   /// Return a pointer to the first non-hex digit or End.
   const char *SkipOctalDigits(const char *ptr) {
-    while (ptr != ThisTokEnd && ((*ptr >= '0') && (*ptr <= '7')))
+    while (ptr != ThisTokEnd &&
+           ((*ptr >= '0' && *ptr <= '7') || isDigitSeparator(*ptr)))
       ptr++;
     return ptr;
   }
@@ -115,7 +128,7 @@ private:
   /// SkipDigits - Read and skip over any digits, up to End.
   /// Return a pointer to the first non-hex digit or End.
   const char *SkipDigits(const char *ptr) {
-    while (ptr != ThisTokEnd && isdigit(*ptr))
+    while (ptr != ThisTokEnd && (isDigit(*ptr) || isDigitSeparator(*ptr)))
       ptr++;
     return ptr;
   }
@@ -123,7 +136,8 @@ private:
   /// SkipBinaryDigits - Read and skip over any binary digits, up to End.
   /// Return a pointer to the first non-binary digit or End.
   const char *SkipBinaryDigits(const char *ptr) {
-    while (ptr != ThisTokEnd && (*ptr == '0' || *ptr == '1'))
+    while (ptr != ThisTokEnd &&
+           (*ptr == '0' || *ptr == '1' || isDigitSeparator(*ptr)))
       ptr++;
     return ptr;
   }
@@ -230,8 +244,8 @@ public:
 
 private:
   void init(const Token *StringToks, unsigned NumStringToks);
-  bool CopyStringFragment(StringRef Fragment);
-  bool DiagnoseBadString(const Token& Tok);
+  bool CopyStringFragment(const Token &Tok, const char *TokBegin,
+                          StringRef Fragment);
   void DiagnoseLexingError(SourceLocation Loc);
 };
 

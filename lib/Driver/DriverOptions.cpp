@@ -8,18 +8,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Driver/Options.h"
-#include "clang/Driver/OptTable.h"
-#include "clang/Driver/Option.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/Option/OptTable.h"
+#include "llvm/Option/Option.h"
 
 using namespace clang::driver;
 using namespace clang::driver::options;
+using namespace llvm::opt;
+
+#define PREFIX(NAME, VALUE) static const char *const NAME[] = VALUE;
+#include "clang/Driver/Options.inc"
+#undef PREFIX
 
 static const OptTable::Info InfoTable[] = {
-#define OPTION(NAME, ID, KIND, GROUP, ALIAS, FLAGS, PARAM, \
+#define OPTION(PREFIX, NAME, ID, KIND, GROUP, ALIAS, ALIASARGS, FLAGS, PARAM, \
                HELPTEXT, METAVAR)   \
-  { NAME, HELPTEXT, METAVAR, Option::KIND##Class, PARAM, FLAGS, \
-    OPT_##GROUP, OPT_##ALIAS },
+  { PREFIX, NAME, HELPTEXT, METAVAR, OPT_##ID, Option::KIND##Class, PARAM, \
+    FLAGS, OPT_##GROUP, OPT_##ALIAS, ALIASARGS },
 #include "clang/Driver/Options.inc"
+#undef OPTION
 };
 
 namespace {
@@ -27,7 +34,7 @@ namespace {
 class DriverOptTable : public OptTable {
 public:
   DriverOptTable()
-    : OptTable(InfoTable, sizeof(InfoTable) / sizeof(InfoTable[0])) {}
+    : OptTable(InfoTable, llvm::array_lengthof(InfoTable)) {}
 };
 
 }

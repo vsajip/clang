@@ -26,3 +26,39 @@
 // RUN: %clang_cc1 %s -E -dM -o - \
 // RUN:   | FileCheck %s --check-prefix=CHECK-FINITE-MATH-FLAG-UNDEFINED
 // CHECK-FINITE-MATH-FLAG-UNDEFINED: #define __FINITE_MATH_ONLY__ 0
+//
+// RUN: %clang_cc1 %s -E -dM -o - -triple i686 -target-cpu i386 \
+// RUN:   | FileCheck %s --check-prefix=CHECK-SYNC_CAS_I386
+// CHECK-SYNC_CAS_I386-NOT: __GCC_HAVE_SYNC_COMPARE_AND_SWAP
+//
+// RUN: %clang_cc1 %s -E -dM -o - -triple i686 -target-cpu i486 \
+// RUN:   | FileCheck %s --check-prefix=CHECK-SYNC_CAS_I486
+// CHECK-SYNC_CAS_I486: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
+// CHECK-SYNC_CAS_I486: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
+// CHECK-SYNC_CAS_I486: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4
+// CHECK-SYNC_CAS_I486-NOT: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+//
+// RUN: %clang_cc1 %s -E -dM -o - -triple i686 -target-cpu i586 \
+// RUN:   | FileCheck %s --check-prefix=CHECK-SYNC_CAS_I586
+// CHECK-SYNC_CAS_I586: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
+// CHECK-SYNC_CAS_I586: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
+// CHECK-SYNC_CAS_I586: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4
+// CHECK-SYNC_CAS_I586: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+//
+// RUN: %clang_cc1 %s -E -dM -o - -triple armv6 -target-cpu arm1136j-s \
+// RUN:   | FileCheck %s --check-prefix=CHECK-SYNC_CAS_ARM
+// CHECK-SYNC_CAS_ARM: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
+// CHECK-SYNC_CAS_ARM: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
+// CHECK-SYNC_CAS_ARM: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4
+// CHECK-SYNC_CAS_ARM: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+//
+// RUN: %clang_cc1 %s -E -dM -o - -triple armv7 -target-cpu cortex-a8 \
+// RUN:   | FileCheck %s --check-prefix=CHECK-SYNC_CAS_ARMv7
+// CHECK-SYNC_CAS_ARMv7: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_1
+// CHECK-SYNC_CAS_ARMv7: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_2
+// CHECK-SYNC_CAS_ARMv7: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_4
+// CHECK-SYNC_CAS_ARMv7: __GCC_HAVE_SYNC_COMPARE_AND_SWAP_8
+//
+// RUN: %clang_cc1 %s -E -dM -o - -triple armv6 -target-cpu cortex-m0 \
+// RUN:   | FileCheck %s --check-prefix=CHECK-SYNC_CAS_ARMv6
+// CHECK-SYNC_CAS_ARMv6-NOT: __GCC_HAVE_SYNC_COMPARE_AND_SWAP

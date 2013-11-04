@@ -57,6 +57,16 @@ struct Ambig {
   operator signed char(); // expected-note 2 {{candidate function}}
 };
 
+struct Abstract {
+  virtual ~Abstract() = 0; // expected-note {{unimplemented pure virtual method '~Abstract' in 'Abstract'}}
+};
+
+struct Derived1: Abstract {
+};
+
+struct Derived2: Abstract {
+};
+
 void test()
 {
   // This function tests C++0x 5.16
@@ -71,6 +81,8 @@ void test()
   i1 ? test() : test();
   i1 = i1 ? throw 0 : 0;
   i1 = i1 ? 0 : throw 0;
+  i1 = i1 ? (throw 0) : 0;
+  i1 = i1 ? 0 : (throw 0);
   i1 ? 0 : test(); // expected-error {{right operand to ? is void, but left operand is of type 'int'}}
   i1 ? test() : 0; // expected-error {{left operand to ? is void, but right operand is of type 'int'}}
   (i1 ? throw 0 : i1) = 0; // expected-error {{expression is not assignable}}
@@ -136,7 +148,7 @@ void test()
   (void)(i1 ? 1 : Ambig()); // expected-error {{conversion from 'Ambig' to 'int' is ambiguous}}
   (void)(i1 ? Ambig() : 1); // expected-error {{conversion from 'Ambig' to 'int' is ambiguous}}
   // By the way, this isn't an lvalue:
-  &(i1 ? i1 : i2); // expected-error {{address expression must be an lvalue or a function designator}}
+  &(i1 ? i1 : i2); // expected-error {{cannot take the address of an rvalue}}
 
   // p4 (lvalue, same type)
   Fields flds;
@@ -173,7 +185,7 @@ void test()
     i1 ? &MixedFields::ci : &MixedFields::cvi;
   (void)(i1 ? &MixedFields::ci : &MixedFields::vi);
   // Conversion of primitives does not result in an lvalue.
-  &(i1 ? i1 : d1); // expected-error {{address expression must be an lvalue or a function designator}}
+  &(i1 ? i1 : d1); // expected-error {{cannot take the address of an rvalue}}
 
   (void)&(i1 ? flds.b1 : flds.i1); // expected-error {{address of bit-field requested}}
   (void)&(i1 ? flds.i1 : flds.b1); // expected-error {{address of bit-field requested}}
@@ -206,6 +218,9 @@ void test()
   // Note the thing that this does not test: since DR446, various situations
   // *must* create a separate temporary copy of class objects. This can only
   // be properly tested at runtime, though.
+
+  const Abstract &a = true ? static_cast<const Abstract&>(Derived1()) : Derived2(); // expected-error {{allocating an object of abstract class type 'const Abstract'}}
+  true ? static_cast<const Abstract&>(Derived1()) : throw 3; // expected-error {{allocating an object of abstract class type 'const Abstract'}}
 }
 
 namespace PR6595 {

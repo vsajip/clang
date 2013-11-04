@@ -81,6 +81,13 @@ void oopsMoreCommas() {
   &a == &b ? oopsMoreCommas() : removeUnusedLabels(a[0]);
 }
 
+int commaAtEndOfStatement() {
+  int a = 1;
+  a = 5, // expected-error {{';'}}
+  int m = 5, // expected-error {{';'}}
+  return 0, // expected-error {{';'}}
+}
+
 int noSemiAfterLabel(int n) {
   switch (n) {
     default:
@@ -108,3 +115,5 @@ struct noSemiAfterStruct {
 enum noSemiAfterEnum {
   e1
 } // expected-error {{expected ';' after enum}}
+
+int PR17175 __attribute__((visibility(hidden))); // expected-error {{'visibility' attribute requires a string}}

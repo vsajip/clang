@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -analyze -analyzer-checker=core,unix.Malloc,debug.ExprInspection -analyzer-ipa=inlining -verify %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=core,unix.Malloc,debug.ExprInspection -analyzer-config ipa=inlining -verify %s
 
 void clang_analyzer_eval(bool);
 void clang_analyzer_checkInlined(bool);
@@ -192,7 +192,7 @@ namespace Invalidation {
     virtual void touchV2(int &x) const;
 
     int test() const {
-      // We were accidentally not invalidating under -analyzer-ipa=inlining
+      // We were accidentally not invalidating under inlining
       // at one point for virtual methods with visible definitions.
       int a, b, c, d;
       touch(a);
@@ -216,7 +216,7 @@ namespace DefaultArgs {
 
   class Secret {
   public:
-    static const int value = 42;
+    static const int value = 40 + 2;
     int get(int i = value) {
       return i;
     }
@@ -225,16 +225,79 @@ namespace DefaultArgs {
   void testMethod() {
     Secret obj;
     clang_analyzer_eval(obj.get(1) == 1); // expected-warning{{TRUE}}
-
-    // FIXME: Should be 'TRUE'. See PR13673 or <rdar://problem/11720796>.
-    clang_analyzer_eval(obj.get() == 42); // expected-warning{{UNKNOWN}}
-
-    // FIXME: Even if we constrain the variable, we still have a problem.
-    // See PR13385 or <rdar://problem/12156507>.
-    if (Secret::value != 42)
-      return;
+    clang_analyzer_eval(obj.get() == 42); // expected-warning{{TRUE}}
     clang_analyzer_eval(Secret::value == 42); // expected-warning{{TRUE}}
-    clang_analyzer_eval(obj.get() == 42); // expected-warning{{UNKNOWN}}
+  }
+
+  enum ABC {
+    A = 0,
+    B = 1,
+    C = 2
+  };
+
+  int enumUser(ABC input = B) {
+    return static_cast<int>(input);
+  }
+
+  void testEnum() {
+    clang_analyzer_eval(enumUser(C) == 2); // expected-warning{{TRUE}}
+    clang_analyzer_eval(enumUser() == 1); // expected-warning{{TRUE}}
+  }
+
+
+  int exprUser(int input = 2 * 4) {
+    return input;
+  }
+
+  int complicatedExprUser(int input = 2 * Secret::value) {
+    return input;
+  }
+
+  void testExprs() {
+    clang_analyzer_eval(exprUser(1) == 1); // expected-warning{{TRUE}}
+    clang_analyzer_eval(exprUser() == 8); // expected-warning{{TRUE}}
+
+    clang_analyzer_eval(complicatedExprUser(1) == 1); // expected-warning{{TRUE}}
+    clang_analyzer_eval(complicatedExprUser() == 84); // expected-warning{{TRUE}}
+  }
+
+  int defaultReference(const int &input = 42) {
+    return -input;
+  }
+  int defaultReferenceZero(const int &input = 0) {
+    return -input;
+  }
+
+  void testReference() {
+    clang_analyzer_eval(defaultReference(1) == -1); // expected-warning{{TRUE}}
+    clang_analyzer_eval(defaultReference() == -42); // expected-warning{{TRUE}}
+
+    clang_analyzer_eval(defaultReferenceZero(1) == -1); // expected-warning{{TRUE}}
+    clang_analyzer_eval(defaultReferenceZero() == 0); // expected-warning{{TRUE}}
+}
+
+  double defaultFloatReference(const double &i = 42) {
+    return -i;
+  }
+  double defaultFloatReferenceZero(const double &i = 0) {
+    return -i;
+  }
+
+  void testFloatReference() {
+    clang_analyzer_eval(defaultFloatReference(1) == -1); // expected-warning{{UNKNOWN}}
+    clang_analyzer_eval(defaultFloatReference() == -42); // expected-warning{{UNKNOWN}}
+
+    clang_analyzer_eval(defaultFloatReferenceZero(1) == -1); // expected-warning{{UNKNOWN}}
+    clang_analyzer_eval(defaultFloatReferenceZero() == 0); // expected-warning{{UNKNOWN}}
+  }
+
+  char defaultString(const char *s = "abc") {
+    return s[1];
+  }
+
+  void testString() {
+    clang_analyzer_eval(defaultString("xyz") == 'y'); // expected-warning{{TRUE}}
+    clang_analyzer_eval(defaultString() == 'b'); // expected-warning{{TRUE}}
   }
 }
 
@@ -255,6 +318,7 @@ namespace OperatorNew {
     IntWrapper *obj = new IntWrapper(42);
     // should be TRUE
     clang_analyzer_eval(obj->value == 42); // expected-warning{{UNKNOWN}}
+    delete obj;
   }
 
   void testPlacement() {
@@ -265,5 +329,110 @@ namespace OperatorNew {
 
     // should be TRUE
     clang_analyzer_eval(obj->value == 42); // expected-warning{{UNKNOWN}}
+  }
+}
+
+
+namespace VirtualWithSisterCasts {
+  // This entire set of tests exercises casts from sister classes and
+  // from classes outside the hierarchy, which can very much confuse
+  // code that uses DynamicTypeInfo or needs to construct CXXBaseObjectRegions.
+  // These examples used to cause crashes in +Asserts builds.
+  struct Parent {
+    virtual int foo();
+    int x;
+  };
+
+  struct A : Parent {
+    virtual int foo() { return 42; }
+  };
+
+  struct B : Parent {
+    virtual int foo();
+  };
+
+  struct Grandchild : public A {};
+
+  struct Unrelated {};
+
+  void testDowncast(Parent *b) {
+    A *a = (A *)(void *)b;
+    clang_analyzer_eval(a->foo() == 42); // expected-warning{{UNKNOWN}}
+
+    a->x = 42;
+    clang_analyzer_eval(a->x == 42); // expected-warning{{TRUE}}
+  }
+
+  void testRelated(B *b) {
+    A *a = (A *)(void *)b;
+    clang_analyzer_eval(a->foo() == 42); // expected-warning{{UNKNOWN}}
+
+    a->x = 42;
+    clang_analyzer_eval(a->x == 42); // expected-warning{{TRUE}}
+  }
+
+  void testUnrelated(Unrelated *b) {
+    A *a = (A *)(void *)b;
+    clang_analyzer_eval(a->foo() == 42); // expected-warning{{UNKNOWN}}
+
+    a->x = 42;
+    clang_analyzer_eval(a->x == 42); // expected-warning{{TRUE}}
+  }
+
+  void testCastViaNew(B *b) {
+    Grandchild *g = new (b) Grandchild();
+    clang_analyzer_eval(g->foo() == 42); // expected-warning{{TRUE}}
+
+    g->x = 42;
+    clang_analyzer_eval(g->x == 42); // expected-warning{{TRUE}}
+  }
+}
+
+
+namespace QualifiedCalls {
+  void test(One *object) {
+    // This uses the One class from the top of the file.
+    clang_analyzer_eval(object->getNum() == 1); // expected-warning{{UNKNOWN}}
+    clang_analyzer_eval(object->One::getNum() == 1); // expected-warning{{TRUE}}
+    clang_analyzer_eval(object->A::getNum() == 0); // expected-warning{{TRUE}}
+
+    // getZero is non-virtual.
+    clang_analyzer_eval(object->getZero() == 0); // expected-warning{{TRUE}}
+    clang_analyzer_eval(object->One::getZero() == 0); // expected-warning{{TRUE}}
+    clang_analyzer_eval(object->A::getZero() == 0); // expected-warning{{TRUE}}
+}
+}
+
+
+namespace rdar12409977  {
+  struct Base {
+    int x;
+  };
+
+  struct Parent : public Base {
+    virtual Parent *vGetThis();
+    Parent *getThis() { return vGetThis(); }
+  };
+
+  struct Child : public Parent {
+    virtual Child *vGetThis() { return this; }
+  };
+
+  void test() {
+    Child obj;
+    obj.x = 42;
+
+    // Originally, calling a devirtualized method with a covariant return type
+    // caused a crash because the return value had the wrong type. When we then
+    // go to layer a CXXBaseObjectRegion on it, the base isn't a direct base of
+    // the object region and we get an assertion failure.
+    clang_analyzer_eval(obj.getThis()->x == 42); // expected-warning{{TRUE}}
+  }
+}
+
+namespace bug16307 {
+  void one_argument(int a) { }
+  void call_with_less() {
+    reinterpret_cast<void (*)()>(one_argument)(); // expected-warning{{Function taking 1 argument}}
   }
 }

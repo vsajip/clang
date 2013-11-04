@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 %s -verify -fsyntax-only
+// RUN: %clang_cc1 %s -verify -fexceptions
 class A {
   void f() __attribute__((deprecated)); // expected-note 2 {{declared here}}
   void g(A* a);
@@ -233,3 +233,20 @@ namespace test6 {
     x = D<int>::d1; // expected-warning {{'d1' is deprecated}}
   }
 }
+
+namespace test7 {
+  struct X {
+    void* operator new(typeof(sizeof(void*))) __attribute__((deprecated));  // expected-note{{'operator new' declared here}}
+    void operator delete(void *) __attribute__((deprecated));  // expected-note{{'operator delete' declared here}}
+  };
+
+  void test() {
+    X *x = new X;  // expected-warning{{'operator new' is deprecated}} expected-warning{{'operator delete' is deprecated}}
+  }
+}
+
+// rdar://problem/15044218
+typedef struct TDS {
+} TDS __attribute__((deprecated)); // expected-note {{'TDS' declared here}}
+TDS tds; // expected-warning {{'TDS' is deprecated}}
+struct TDS tds2; // no warning, attribute only applies to the typedef.

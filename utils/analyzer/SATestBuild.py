@@ -142,7 +142,7 @@ if not Clang:
     sys.exit(-1)
 
 # Number of jobs.
-Jobs = math.ceil(detectCPUs() * 0.75)
+Jobs = int(math.ceil(detectCPUs() * 0.75))
 
 # Project map stores info about all the "registered" projects.
 ProjectMapFile = "projectMap.csv"
@@ -168,8 +168,9 @@ SBOutputDirName = "ScanBuildResults"
 SBOutputDirReferencePrefix = "Ref"
 
 # The list of checkers used during analyzes.
-# Currently, consists of all the non experimental checkers.
-Checkers="alpha.security.taint,core,deadcode,security,unix,osx"
+# Currently, consists of all the non experimental checkers, plus a few alpha
+# checkers we don't want to regress on.
+Checkers="alpha.unix.SimpleStream,alpha.security.taint,alpha.cplusplus.NewDeleteLeaks,core,cplusplus,deadcode,security,unix,osx"
 
 Verbose = 1
 
@@ -206,15 +207,21 @@ def runScanBuild(Dir, SBOutputDir, PBuildLogFile):
     SBOptions = "--use-analyzer " + Clang + " "
     SBOptions += "-plist-html -o " + SBOutputDir + " "
     SBOptions += "-enable-checker " + Checkers + " "  
+    SBOptions += "--keep-empty "
+    # Always use ccc-analyze to ensure that we can locate the failures 
+    # directory.
+    SBOptions += "--override-compiler "
     try:
         SBCommandFile = open(BuildScriptPath, "r")
         SBPrefix = "scan-build " + SBOptions + " "
         for Command in SBCommandFile:
+            Command = Command.strip()
             # If using 'make', auto imply a -jX argument
             # to speed up analysis.  xcodebuild will
             # automatically use the maximum number of cores.
-            if Command.startswith("make "):
-                Command += "-j" + Jobs
+            if (Command.startswith("make ") or Command == "make") and \
+                "-j" not in Command:
+                Command += " -j%d" % Jobs
             SBCommand = SBPrefix + Command
             if Verbose == 1:        
                 print "  Executing: %s" % (SBCommand,)
@@ -241,7 +248,7 @@ def isValidSingleInputFile(FileName):
     return False
    
 # Run analysis on a set of preprocessed files.
-def runAnalyzePreprocessed(Dir, SBOutputDir):
+def runAnalyzePreprocessed(Dir, SBOutputDir, Mode):
     if os.path.exists(os.path.join(Dir, BuildScript)):
         print "Error: The preprocessed files project should not contain %s" % \
                BuildScript
@@ -249,6 +256,9 @@ def runAnalyzePreprocessed(Dir, SBOutputDir):
 
     CmdPrefix = Clang + " -cc1 -analyze -analyzer-output=plist -w "
     CmdPrefix += "-analyzer-checker=" + Checkers +" -fcxx-exceptions -fblocks "   
+    
+    if (Mode == 2) :
+        CmdPrefix += "-std=c++11 " 
     
     PlistPath = os.path.join(Dir, SBOutputDir, "date")
     FailPath = os.path.join(PlistPath, "failures");
@@ -287,7 +297,7 @@ def runAnalyzePreprocessed(Dir, SBOutputDir):
         if Failed == False:
             os.remove(LogFile.name);
 
-def buildProject(Dir, SBOutputDir, IsScanBuild, IsReferenceBuild):
+def buildProject(Dir, SBOutputDir, ProjectBuildMode, IsReferenceBuild):
     TBegin = time.time() 
 
     BuildLogPath = os.path.join(SBOutputDir, LogFolderName, BuildLogName)
@@ -317,10 +327,10 @@ def buildProject(Dir, SBOutputDir, IsScanBuild, IsReferenceBuild):
     try:
         runCleanupScript(Dir, PBuildLogFile)
         
-        if IsScanBuild:
+        if (ProjectBuildMode == 1):
             runScanBuild(Dir, SBOutputDir, PBuildLogFile)
         else:
-            runAnalyzePreprocessed(Dir, SBOutputDir)
+            runAnalyzePreprocessed(Dir, SBOutputDir, ProjectBuildMode)
         
         if IsReferenceBuild :
             runCleanupScript(Dir, PBuildLogFile)
@@ -404,8 +414,10 @@ def runCmpResults(Dir):
     RefList = glob.glob(RefDir + "/*") 
     NewList = glob.glob(NewDir + "/*")
     
-    # Log folders are also located in the results dir, so ignore them. 
-    RefList.remove(os.path.join(RefDir, LogFolderName))
+    # Log folders are also located in the results dir, so ignore them.
+    RefLogDir = os.path.join(RefDir, LogFolderName)
+    if RefLogDir in RefList:
+        RefList.remove(RefLogDir)
     NewList.remove(os.path.join(NewDir, LogFolderName))
     
     if len(RefList) == 0 or len(NewList) == 0:
@@ -474,7 +486,7 @@ def updateSVN(Mode, ProjectsMap):
         print "Error: SVN update failed."
         sys.exit(-1)
         
-def testProject(ID, IsScanBuild, IsReferenceBuild=False, Dir=None):
+def testProject(ID, ProjectBuildMode, IsReferenceBuild=False, Dir=None):
     print " \n\n--- Building project %s" % (ID,)
 
     TBegin = time.time() 
@@ -488,7 +500,7 @@ def testProject(ID, IsScanBuild, IsReferenceBuild=False, Dir=None):
     RelOutputDir = getSBOutputDirName(IsReferenceBuild)
     SBOutputDir = os.path.join(Dir, RelOutputDir)
                 
-    buildProject(Dir, SBOutputDir, IsScanBuild, IsReferenceBuild)
+    buildProject(Dir, SBOutputDir, ProjectBuildMode, IsReferenceBuild)
 
     checkBuild(SBOutputDir)
     
@@ -506,8 +518,9 @@ def testAll(IsReferenceBuild = False, UpdateSVN = False):
             if (len(I) != 2) :
                 print "Error: Rows in the ProjectMapFile should have 3 entries."
                 raise Exception()
-            if (not ((I[1] == "1") | (I[1] == "0"))):
-                print "Error: Second entry in the ProjectMapFile should be 0 or 1."
+            if (not ((I[1] == "0") | (I[1] == "1") | (I[1] == "2"))):
+                print "Error: Second entry in the ProjectMapFile should be 0" \
+                      " (single file), 1 (project), or 2(single file c++11)."
                 raise Exception()              
 
         # When we are regenerating the reference results, we might need to 

@@ -23,6 +23,8 @@
 
 namespace clang {
 
+class TargetInfo;
+
 //===----------------------------------------------------------------------===//
 /// Common components of both fprintf and fscanf format strings.
 namespace analyze_format_string {
@@ -47,7 +49,7 @@ public:
   const char *toString() const { return representation; }
 
   // Overloaded operators for bool like qualities
-  operator bool() const { return flag; }
+  LLVM_EXPLICIT operator bool() const { return flag; }
   OptionalFlag& operator=(const bool &rhs) {
     flag = rhs;
     return *this;  // Return a reference to myself.
@@ -71,6 +73,9 @@ public:
     AsIntMax,     // 'j'
     AsSizeT,      // 'z'
     AsPtrDiff,    // 't'
+    AsInt32,      // 'I32' (MSVCRT, like __int32)
+    AsInt3264,    // 'I'   (MSVCRT, like __int3264 from MIDL)
+    AsInt64,      // 'I64' (MSVCRT, like __int64)
     AsLongDouble, // 'L'
     AsAllocate,   // for '%as', GNU extension to C90 scanf
     AsMAllocate,  // for '%ms', GNU extension to scanf
@@ -93,6 +98,9 @@ public:
       case AsLongLong:
       case AsChar:
         return 2;
+      case AsInt32:
+      case AsInt64:
+        return 3;
       case None:
         return 0;
     }
@@ -115,11 +123,14 @@ public:
       // C99 conversion specifiers.
     cArg,
     dArg,
+    DArg, // Apple extension
     iArg,
-    IntArgBeg = cArg, IntArgEnd = iArg,
+    IntArgBeg = dArg, IntArgEnd = iArg,
 
     oArg,
+    OArg, // Apple extension
     uArg,
+    UArg, // Apple extension
     xArg,
     XArg,
     UIntArgBeg = oArg, UIntArgEnd = XArg,
@@ -157,7 +168,7 @@ public:
     ScanfConvBeg = ScanListArg, ScanfConvEnd = ScanListArg
   };
 
-  ConversionSpecifier(bool isPrintf)
+  ConversionSpecifier(bool isPrintf = true)
     : IsPrintf(isPrintf), Position(0), EndScanList(0), kind(InvalidSpecifier) {}
 
   ConversionSpecifier(bool isPrintf, const char *pos, Kind k)
@@ -189,10 +200,14 @@ public:
     return EndScanList ? EndScanList - Position : 1;
   }
 
+  bool isIntArg() const { return kind >= IntArgBeg && kind <= IntArgEnd; }
   bool isUIntArg() const { return kind >= UIntArgBeg && kind <= UIntArgEnd; }
+  bool isAnyIntArg() const { return kind >= IntArgBeg && kind <= UIntArgEnd; }
   const char *toString() const;
 
   bool isPrintfKind() const { return IsPrintf; }
+  
+  Optional<ConversionSpecifier> getStandardSpecifier() const;
 
 protected:
   bool IsPrintf;
@@ -348,9 +363,11 @@ public:
 
   bool usesPositionalArg() const { return UsesPositionalArg; }
 
-  bool hasValidLengthModifier() const;
+  bool hasValidLengthModifier(const TargetInfo &Target) const;
 
   bool hasStandardLengthModifier() const;
+
+  Optional<LengthModifier> getCorrectedLengthModifier() const;
 
   bool hasStandardConversionSpecifier(const LangOptions &LangOpt) const;
 
@@ -378,7 +395,6 @@ public:
     : ConversionSpecifier(true, pos, k) {}
 
   bool isObjCArg() const { return kind >= ObjCBeg && kind <= ObjCEnd; }
-  bool isIntArg() const { return kind >= IntArgBeg && kind <= IntArgEnd; }
   bool isDoubleArg() const { return kind >= DoubleArgBeg &&
                                     kind <= DoubleArgEnd; }
   unsigned getLength() const {
@@ -623,10 +639,12 @@ public:
 };
 
 bool ParsePrintfString(FormatStringHandler &H,
-                       const char *beg, const char *end, const LangOptions &LO);
+                       const char *beg, const char *end, const LangOptions &LO,
+                       const TargetInfo &Target);
 
 bool ParseScanfString(FormatStringHandler &H,
-                      const char *beg, const char *end, const LangOptions &LO);
+                      const char *beg, const char *end, const LangOptions &LO,
+                      const TargetInfo &Target);
 
 } // end analyze_format_string namespace
 } // end clang namespace

@@ -10,6 +10,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclGroup.h"
+#include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendAction.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CompilationDatabase.h"
@@ -97,9 +98,9 @@ TEST(runToolOnCode, FindsClassDecl) {
 }
 
 TEST(newFrontendActionFactory, CreatesFrontendActionFactoryFromType) {
-  llvm::OwningPtr<FrontendActionFactory> Factory(
-    newFrontendActionFactory<SyntaxOnlyAction>());
-  llvm::OwningPtr<FrontendAction> Action(Factory->create());
+  OwningPtr<FrontendActionFactory> Factory(
+      newFrontendActionFactory<SyntaxOnlyAction>());
+  OwningPtr<FrontendAction> Action(Factory->create());
   EXPECT_TRUE(Action.get() != NULL);
 }
 
@@ -111,9 +112,9 @@ struct IndependentFrontendActionCreator {
 
 TEST(newFrontendActionFactory, CreatesFrontendActionFactoryFromFactoryType) {
   IndependentFrontendActionCreator Creator;
-  llvm::OwningPtr<FrontendActionFactory> Factory(
-    newFrontendActionFactory(&Creator));
-  llvm::OwningPtr<FrontendAction> Action(Factory->create());
+  OwningPtr<FrontendActionFactory> Factory(
+      newFrontendActionFactory(&Creator));
+  OwningPtr<FrontendAction> Action(Factory->create());
   EXPECT_TRUE(Action.get() != NULL);
 }
 
@@ -128,6 +129,129 @@ TEST(ToolInvocation, TestMapVirtualFile) {
   Invocation.mapVirtualFile("test.cpp", "#include <abc>\n");
   Invocation.mapVirtualFile("def/abc", "\n");
   EXPECT_TRUE(Invocation.run());
+}
+
+TEST(ToolInvocation, TestVirtualModulesCompilation) {
+  // FIXME: Currently, this only tests that we don't exit with an error if a
+  // mapped module.map is found on the include path. In the future, expand this
+  // test to run a full modules enabled compilation, so we make sure we can
+  // rerun modules compilations with a virtual file system.
+  clang::FileManager Files((clang::FileSystemOptions()));
+  std::vector<std::string> Args;
+  Args.push_back("tool-executable");
+  Args.push_back("-Idef");
+  Args.push_back("-fsyntax-only");
+  Args.push_back("test.cpp");
+  clang::tooling::ToolInvocation Invocation(Args, new SyntaxOnlyAction, &Files);
+  Invocation.mapVirtualFile("test.cpp", "#include <abc>\n");
+  Invocation.mapVirtualFile("def/abc", "\n");
+  // Add a module.map file in the include directory of our header, so we trigger
+  // the module.map header search logic.
+  Invocation.mapVirtualFile("def/module.map", "\n");
+  EXPECT_TRUE(Invocation.run());
+}
+
+struct VerifyEndCallback : public SourceFileCallbacks {
+  VerifyEndCallback() : BeginCalled(0), EndCalled(0), Matched(false) {}
+  virtual bool handleBeginSource(CompilerInstance &CI,
+                                 StringRef Filename) LLVM_OVERRIDE {
+    ++BeginCalled;
+    return true;
+  }
+  virtual void handleEndSource() {
+    ++EndCalled;
+  }
+  ASTConsumer *newASTConsumer() {
+    return new FindTopLevelDeclConsumer(&Matched);
+  }
+  unsigned BeginCalled;
+  unsigned EndCalled;
+  bool Matched;
+};
+
+#if !defined(_WIN32)
+TEST(newFrontendActionFactory, InjectsSourceFileCallbacks) {
+  VerifyEndCallback EndCallback;
+
+  FixedCompilationDatabase Compilations("/", std::vector<std::string>());
+  std::vector<std::string> Sources;
+  Sources.push_back("/a.cc");
+  Sources.push_back("/b.cc");
+  ClangTool Tool(Compilations, Sources);
+
+  Tool.mapVirtualFile("/a.cc", "void a() {}");
+  Tool.mapVirtualFile("/b.cc", "void b() {}");
+
+  Tool.run(newFrontendActionFactory(&EndCallback, &EndCallback));
+
+  EXPECT_TRUE(EndCallback.Matched);
+  EXPECT_EQ(2u, EndCallback.BeginCalled);
+  EXPECT_EQ(2u, EndCallback.EndCalled);
+}
+#endif
+
+struct SkipBodyConsumer : public clang::ASTConsumer {
+  /// Skip the 'skipMe' function.
+  virtual bool shouldSkipFunctionBody(Decl *D) {
+    FunctionDecl *F = dyn_cast<FunctionDecl>(D);
+    return F && F->getNameAsString() == "skipMe";
+  }
+};
+
+struct SkipBodyAction : public clang::ASTFrontendAction {
+  virtual ASTConsumer *CreateASTConsumer(CompilerInstance &Compiler,
+                                         StringRef) {
+    Compiler.getFrontendOpts().SkipFunctionBodies = true;
+    return new SkipBodyConsumer;
+  }
+};
+
+TEST(runToolOnCode, TestSkipFunctionBody) {
+  EXPECT_TRUE(runToolOnCode(new SkipBodyAction,
+                            "int skipMe() { an_error_here }"));
+  EXPECT_FALSE(runToolOnCode(new SkipBodyAction,
+                             "int skipMeNot() { an_error_here }"));
+}
+
+struct CheckSyntaxOnlyAdjuster: public ArgumentsAdjuster {
+  bool &Found;
+  bool &Ran;
+
+  CheckSyntaxOnlyAdjuster(bool &Found, bool &Ran) : Found(Found), Ran(Ran) { }
+
+  virtual CommandLineArguments
+  Adjust(const CommandLineArguments &Args) LLVM_OVERRIDE {
+    Ran = true;
+    for (unsigned I = 0, E = Args.size(); I != E; ++I) {
+      if (Args[I] == "-fsyntax-only") {
+        Found = true;
+        break;
+      }
+    }
+    return Args;
+  }
+};
+
+TEST(ClangToolTest, ArgumentAdjusters) {
+  FixedCompilationDatabase Compilations("/", std::vector<std::string>());
+
+  ClangTool Tool(Compilations, std::vector<std::string>(1, "/a.cc"));
+  Tool.mapVirtualFile("/a.cc", "void a() {}");
+
+  bool Found = false;
+  bool Ran = false;
+  Tool.appendArgumentsAdjuster(new CheckSyntaxOnlyAdjuster(Found, Ran));
+  Tool.run(newFrontendActionFactory<SyntaxOnlyAction>());
+  EXPECT_TRUE(Ran);
+  EXPECT_TRUE(Found);
+
+  Ran = Found = false;
+  Tool.clearArgumentsAdjusters();
+  Tool.appendArgumentsAdjuster(new CheckSyntaxOnlyAdjuster(Found, Ran));
+  Tool.appendArgumentsAdjuster(new ClangSyntaxOnlyAdjuster());
+  Tool.run(newFrontendActionFactory<SyntaxOnlyAction>());
+  EXPECT_TRUE(Ran);
+  EXPECT_FALSE(Found);
 }
 
 } // end namespace tooling

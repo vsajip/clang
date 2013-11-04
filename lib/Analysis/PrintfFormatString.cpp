@@ -14,6 +14,7 @@
 
 #include "clang/Analysis/Analyses/FormatString.h"
 #include "FormatStringParsing.h"
+#include "clang/Basic/TargetInfo.h"
 
 using clang::analyze_format_string::ArgType;
 using clang::analyze_format_string::FormatStringHandler;
@@ -52,7 +53,8 @@ static PrintfSpecifierResult ParsePrintfSpecifier(FormatStringHandler &H,
                                                   const char *&Beg,
                                                   const char *E,
                                                   unsigned &argIndex,
-                                                  const LangOptions &LO) {
+                                                  const LangOptions &LO,
+                                                  const TargetInfo &Target) {
 
   using namespace clang::analyze_format_string;
   using namespace clang::analyze_printf;
@@ -185,8 +187,8 @@ static PrintfSpecifierResult ParsePrintfSpecifier(FormatStringHandler &H,
     case 'i': k = ConversionSpecifier::iArg; break;
     case 'n': k = ConversionSpecifier::nArg; break;
     case 'o': k = ConversionSpecifier::oArg; break;
-    case 'p': k = ConversionSpecifier::pArg;   break;
-    case 's': k = ConversionSpecifier::sArg;      break;
+    case 'p': k = ConversionSpecifier::pArg; break;
+    case 's': k = ConversionSpecifier::sArg; break;
     case 'u': k = ConversionSpecifier::uArg; break;
     case 'x': k = ConversionSpecifier::xArg; break;
     // POSIX specific.
@@ -196,6 +198,19 @@ static PrintfSpecifierResult ParsePrintfSpecifier(FormatStringHandler &H,
     case '@': k = ConversionSpecifier::ObjCObjArg; break;
     // Glibc specific.
     case 'm': k = ConversionSpecifier::PrintErrno; break;
+    // Apple-specific
+    case 'D':
+      if (Target.getTriple().isOSDarwin())
+        k = ConversionSpecifier::DArg;
+      break;
+    case 'O':
+      if (Target.getTriple().isOSDarwin())
+        k = ConversionSpecifier::OArg;
+      break;
+    case 'U':
+      if (Target.getTriple().isOSDarwin())
+        k = ConversionSpecifier::UArg;
+      break;
   }
   PrintfConversionSpecifier CS(conversionPosition, k);
   FS.setConversionSpecifier(CS);
@@ -212,18 +227,19 @@ static PrintfSpecifierResult ParsePrintfSpecifier(FormatStringHandler &H,
 bool clang::analyze_format_string::ParsePrintfString(FormatStringHandler &H,
                                                      const char *I,
                                                      const char *E,
-                                                     const LangOptions &LO) {
+                                                     const LangOptions &LO,
+                                                     const TargetInfo &Target) {
 
   unsigned argIndex = 0;
 
   // Keep looking for a format specifier until we have exhausted the string.
   while (I != E) {
     const PrintfSpecifierResult &FSR = ParsePrintfSpecifier(H, I, E, argIndex,
-                                                            LO);
+                                                            LO, Target);
     // Did a fail-stop error of any kind occur when parsing the specifier?
     // If so, don't do any more processing.
     if (FSR.shouldStop())
-      return true;;
+      return true;
     // Did we exhaust the string or encounter an error that
     // we can recover from?
     if (!FSR.hasValue())
@@ -262,18 +278,27 @@ ArgType PrintfSpecifier::getArgType(ASTContext &Ctx,
       case LengthModifier::AsLongDouble:
         // GNU extension.
         return Ctx.LongLongTy;
-      case LengthModifier::None: return Ctx.IntTy;
+      case LengthModifier::None:
+        return Ctx.IntTy;
+      case LengthModifier::AsInt32:
+        return ArgType(Ctx.IntTy, "__int32");
       case LengthModifier::AsChar: return ArgType::AnyCharTy;
       case LengthModifier::AsShort: return Ctx.ShortTy;
       case LengthModifier::AsLong: return Ctx.LongTy;
       case LengthModifier::AsLongLong:
       case LengthModifier::AsQuad:
         return Ctx.LongLongTy;
+      case LengthModifier::AsInt64:
+        return ArgType(Ctx.LongLongTy, "__int64");
       case LengthModifier::AsIntMax:
         return ArgType(Ctx.getIntMaxType(), "intmax_t");
       case LengthModifier::AsSizeT:
         // FIXME: How to get the corresponding signed version of size_t?
         return ArgType();
+      case LengthModifier::AsInt3264:
+        return Ctx.getTargetInfo().getTriple().isArch64Bit()
+                   ? ArgType(Ctx.LongLongTy, "__int64")
+                   : ArgType(Ctx.IntTy, "__int32");
       case LengthModifier::AsPtrDiff:
         return ArgType(Ctx.getPointerDiffType(), "ptrdiff_t");
       case LengthModifier::AsAllocate:
@@ -286,17 +311,26 @@ ArgType PrintfSpecifier::getArgType(ASTContext &Ctx,
       case LengthModifier::AsLongDouble:
         // GNU extension.
         return Ctx.UnsignedLongLongTy;
-      case LengthModifier::None: return Ctx.UnsignedIntTy;
+      case LengthModifier::None:
+        return Ctx.UnsignedIntTy;
+      case LengthModifier::AsInt32:
+        return ArgType(Ctx.UnsignedIntTy, "unsigned __int32");
       case LengthModifier::AsChar: return Ctx.UnsignedCharTy;
       case LengthModifier::AsShort: return Ctx.UnsignedShortTy;
       case LengthModifier::AsLong: return Ctx.UnsignedLongTy;
       case LengthModifier::AsLongLong:
       case LengthModifier::AsQuad:
         return Ctx.UnsignedLongLongTy;
+      case LengthModifier::AsInt64:
+        return ArgType(Ctx.UnsignedLongLongTy, "unsigned __int64");
       case LengthModifier::AsIntMax:
         return ArgType(Ctx.getUIntMaxType(), "uintmax_t");
       case LengthModifier::AsSizeT:
         return ArgType(Ctx.getSizeType(), "size_t");
+      case LengthModifier::AsInt3264:
+        return Ctx.getTargetInfo().getTriple().isArch64Bit()
+                   ? ArgType(Ctx.UnsignedLongLongTy, "unsigned __int64")
+                   : ArgType(Ctx.UnsignedIntTy, "unsigned __int32");
       case LengthModifier::AsPtrDiff:
         // FIXME: How to get the corresponding unsigned
         // version of ptrdiff_t?
@@ -335,6 +369,9 @@ ArgType PrintfSpecifier::getArgType(ASTContext &Ctx,
         return ArgType(); // FIXME: Is this a known extension?
       case LengthModifier::AsAllocate:
       case LengthModifier::AsMAllocate:
+      case LengthModifier::AsInt32:
+      case LengthModifier::AsInt3264:
+      case LengthModifier::AsInt64:
         return ArgType::Invalid();
     }
   }
@@ -343,18 +380,20 @@ ArgType PrintfSpecifier::getArgType(ASTContext &Ctx,
     case ConversionSpecifier::sArg:
       if (LM.getKind() == LengthModifier::AsWideChar) {
         if (IsObjCLiteral)
-          return Ctx.getPointerType(Ctx.UnsignedShortTy.withConst());
+          return ArgType(Ctx.getPointerType(Ctx.UnsignedShortTy.withConst()),
+                         "const unichar *");
         return ArgType(ArgType::WCStrTy, "wchar_t *");
       }
       return ArgType::CStrTy;
     case ConversionSpecifier::SArg:
       if (IsObjCLiteral)
-        return Ctx.getPointerType(Ctx.UnsignedShortTy.withConst());
+        return ArgType(Ctx.getPointerType(Ctx.UnsignedShortTy.withConst()),
+                       "const unichar *");
       return ArgType(ArgType::WCStrTy, "wchar_t *");
     case ConversionSpecifier::CArg:
       if (IsObjCLiteral)
-        return Ctx.UnsignedShortTy;
-      return ArgType(Ctx.WCharTy, "wchar_t");
+        return ArgType(Ctx.UnsignedShortTy, "unichar");
+      return ArgType(Ctx.WideCharTy, "wchar_t");
     case ConversionSpecifier::pArg:
       return ArgType::CPointerTy;
     case ConversionSpecifier::ObjCObjArg:
@@ -478,17 +517,37 @@ bool PrintfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
   }
 
   // Handle size_t, ptrdiff_t, etc. that have dedicated length modifiers in C99.
-  if (isa<TypedefType>(QT) && (LangOpt.C99 || LangOpt.CPlusPlus0x))
+  if (isa<TypedefType>(QT) && (LangOpt.C99 || LangOpt.CPlusPlus11))
     namedTypeToLengthModifier(QT, LM);
 
-  // If fixing the length modifier was enough, we are done.
-  const analyze_printf::ArgType &ATR = getArgType(Ctx, IsObjCLiteral);
-  if (hasValidLengthModifier() && ATR.isValid() && ATR.matchesType(Ctx, QT))
-    return true;
+  // If fixing the length modifier was enough, we might be done.
+  if (hasValidLengthModifier(Ctx.getTargetInfo())) {
+    // If we're going to offer a fix anyway, make sure the sign matches.
+    switch (CS.getKind()) {
+    case ConversionSpecifier::uArg:
+    case ConversionSpecifier::UArg:
+      if (QT->isSignedIntegerType())
+        CS.setKind(clang::analyze_format_string::ConversionSpecifier::dArg);
+      break;
+    case ConversionSpecifier::dArg:
+    case ConversionSpecifier::DArg:
+    case ConversionSpecifier::iArg:
+      if (QT->isUnsignedIntegerType() && !HasPlusPrefix)
+        CS.setKind(clang::analyze_format_string::ConversionSpecifier::uArg);
+      break;
+    default:
+      // Other specifiers do not have signed/unsigned variants.
+      break;
+    }
+
+    const analyze_printf::ArgType &ATR = getArgType(Ctx, IsObjCLiteral);
+    if (ATR.isValid() && ATR.matchesType(Ctx, QT))
+      return true;
+  }
 
   // Set conversion specifier and disable any flags which do not apply to it.
   // Let typedefs to char fall through to int, as %c is silly for uint8_t.
-  if (isa<TypedefType>(QT) && QT->isAnyCharacterType()) {
+  if (!isa<TypedefType>(QT) && QT->isCharType()) {
     CS.setKind(ConversionSpecifier::cArg);
     LM.setKind(LengthModifier::None);
     Precision.setHowSpecified(OptionalAmount::NotSpecified);
@@ -549,6 +608,7 @@ bool PrintfSpecifier::hasValidPlusPrefix() const {
   // The plus prefix only makes sense for signed conversions
   switch (CS.getKind()) {
   case ConversionSpecifier::dArg:
+  case ConversionSpecifier::DArg:
   case ConversionSpecifier::iArg:
   case ConversionSpecifier::fArg:
   case ConversionSpecifier::FArg:
@@ -572,6 +632,7 @@ bool PrintfSpecifier::hasValidAlternativeForm() const {
   // Alternate form flag only valid with the oxXaAeEfFgG conversions
   switch (CS.getKind()) {
   case ConversionSpecifier::oArg:
+  case ConversionSpecifier::OArg:
   case ConversionSpecifier::xArg:
   case ConversionSpecifier::XArg:
   case ConversionSpecifier::aArg:
@@ -596,9 +657,12 @@ bool PrintfSpecifier::hasValidLeadingZeros() const {
   // Leading zeroes flag only valid with the diouxXaAeEfFgG conversions
   switch (CS.getKind()) {
   case ConversionSpecifier::dArg:
+  case ConversionSpecifier::DArg:
   case ConversionSpecifier::iArg:
   case ConversionSpecifier::oArg:
+  case ConversionSpecifier::OArg:
   case ConversionSpecifier::uArg:
+  case ConversionSpecifier::UArg:
   case ConversionSpecifier::xArg:
   case ConversionSpecifier::XArg:
   case ConversionSpecifier::aArg:
@@ -623,6 +687,7 @@ bool PrintfSpecifier::hasValidSpacePrefix() const {
   // The space prefix only makes sense for signed conversions
   switch (CS.getKind()) {
   case ConversionSpecifier::dArg:
+  case ConversionSpecifier::DArg:
   case ConversionSpecifier::iArg:
   case ConversionSpecifier::fArg:
   case ConversionSpecifier::FArg:
@@ -659,8 +724,10 @@ bool PrintfSpecifier::hasValidThousandsGroupingPrefix() const {
 
   switch (CS.getKind()) {
     case ConversionSpecifier::dArg:
+    case ConversionSpecifier::DArg:
     case ConversionSpecifier::iArg:
     case ConversionSpecifier::uArg:
+    case ConversionSpecifier::UArg:
     case ConversionSpecifier::fArg:
     case ConversionSpecifier::FArg:
     case ConversionSpecifier::gArg:
@@ -678,9 +745,12 @@ bool PrintfSpecifier::hasValidPrecision() const {
   // Precision is only valid with the diouxXaAeEfFgGs conversions
   switch (CS.getKind()) {
   case ConversionSpecifier::dArg:
+  case ConversionSpecifier::DArg:
   case ConversionSpecifier::iArg:
   case ConversionSpecifier::oArg:
+  case ConversionSpecifier::OArg:
   case ConversionSpecifier::uArg:
+  case ConversionSpecifier::UArg:
   case ConversionSpecifier::xArg:
   case ConversionSpecifier::XArg:
   case ConversionSpecifier::aArg:

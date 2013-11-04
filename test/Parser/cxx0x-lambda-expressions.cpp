@@ -34,7 +34,7 @@ class C {
     typedef int T; 
     const int b = 0; 
     const int c = 1;
-    int a1[1] = {[b] (T()) {}}; // expected-error{{no viable conversion from 'C::<lambda}}
+    int a1[1] = {[b] (T()) {}}; // expected-error{{no viable conversion from '<lambda}}
     int a2[1] = {[b] = 1 };
     int a3[1] = {[b,c] = 1 }; // expected-error{{expected body of lambda expression}}
     int a4[1] = {[&b] = 1 }; // expected-error{{integral constant expression must have integral or unscoped enumeration type, not 'const int *'}}
@@ -47,5 +47,21 @@ class C {
     delete [] (int*) { new int }; // ok, compound-literal, not lambda
     delete [] { return new int; } (); // expected-error{{expected expression}}
     delete [&] { return new int; } (); // ok, lambda
+  }
+
+  // We support init-captures in C++11 as an extension.
+  int z;
+  void init_capture() {
+    [n(0)] () mutable -> int { return ++n; }; // expected-warning{{extension}}
+    [n{0}] { return; }; // expected-error {{<initializer_list>}} expected-warning{{extension}}
+    [n = 0] { return ++n; }; // expected-error {{captured by copy in a non-mutable}} expected-warning{{extension}}
+    [n = {0}] { return; }; // expected-error {{<initializer_list>}} expected-warning{{extension}}
+    [a([&b = z]{})](){}; // expected-warning 2{{extension}}
+
+    int x = 4;
+    auto y = [&r = x, x = x + 1]() -> int { // expected-warning 2{{extension}}
+      r += 2;
+      return x + 2;
+    } ();
   }
 };

@@ -87,9 +87,8 @@ namespace clang {
     Sema::ParsingDeclState State;
     bool Popped;
 
-    // Do not implement.
-    ParsingDeclRAIIObject(const ParsingDeclRAIIObject &other);
-    ParsingDeclRAIIObject &operator=(const ParsingDeclRAIIObject &other);
+    ParsingDeclRAIIObject(const ParsingDeclRAIIObject &) LLVM_DELETED_FUNCTION;
+    void operator=(const ParsingDeclRAIIObject &) LLVM_DELETED_FUNCTION;
 
   public:
     enum NoParent_t { NoParent };
@@ -245,8 +244,9 @@ namespace clang {
   /// the way they used to be.  This is used to handle __extension__ in the
   /// parser.
   class ExtensionRAIIObject {
-    void operator=(const ExtensionRAIIObject &);     // DO NOT IMPLEMENT
-    ExtensionRAIIObject(const ExtensionRAIIObject&); // DO NOT IMPLEMENT
+    ExtensionRAIIObject(const ExtensionRAIIObject &) LLVM_DELETED_FUNCTION;
+    void operator=(const ExtensionRAIIObject &) LLVM_DELETED_FUNCTION;
+
     DiagnosticsEngine &Diags;
   public:
     ExtensionRAIIObject(DiagnosticsEngine &diags) : Diags(diags) {
@@ -358,7 +358,7 @@ namespace clang {
   /// pair, such as braces { ... } or parentheses ( ... ).
   class BalancedDelimiterTracker : public GreaterThanIsOperatorScope {
     Parser& P;
-    tok::TokenKind Kind, Close;
+    tok::TokenKind Kind, Close, FinalToken;
     SourceLocation (Parser::*Consumer)();
     SourceLocation LOpen, LClose;
     
@@ -377,9 +377,10 @@ namespace clang {
     bool diagnoseMissingClose();
     
   public:
-    BalancedDelimiterTracker(Parser& p, tok::TokenKind k)
+    BalancedDelimiterTracker(Parser& p, tok::TokenKind k,
+                             tok::TokenKind FinalToken = tok::semi)
       : GreaterThanIsOperatorScope(p.GreaterThanIsOperator, true),
-        P(p), Kind(k)
+        P(p), Kind(k), FinalToken(FinalToken)
     {
       switch (Kind) {
         default: llvm_unreachable("Unexpected balanced token");
@@ -407,7 +408,7 @@ namespace clang {
       if (!P.Tok.is(Kind))
         return true;
       
-      if (getDepth() < MaxDepth) {
+      if (getDepth() < P.getLangOpts().BracketDepth) {
         LOpen = (P.*Consumer)();
         return false;
       }

@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -triple=x86_64-apple-darwin10 -emit-llvm -fexceptions %s -o - |FileCheck %s
-// RUN: %clang_cc1 -triple=x86_64-apple-darwin10 -emit-llvm %s -o - |FileCheck -check-prefix NOEXC %s
+// RUN: %clang_cc1 -triple=x86_64-apple-darwin10 -emit-llvm %s -o - |FileCheck -check-prefix CHECK-NOEXC %s
 
 struct A {
   A();
@@ -45,7 +45,7 @@ namespace test1 {
   const int y = x - 1; // This gets deferred.
   const int z = ~y;    // This also gets deferred, but gets "undeferred" before y.
   int test() { return z; }
-// CHECK:      define i32 @_ZN5test14testEv()
+// CHECK-LABEL:      define i32 @_ZN5test14testEv()
 
   // All of these initializers end up delayed, so we check them later.
 }
@@ -200,4 +200,6 @@ namespace test7 {
 // CHECK:   call void [[TEST1_Z_INIT]]
 
 // rdar://problem/8090834: this should be nounwind
-// CHECK-NOEXC: define internal void @_GLOBAL__I_a() nounwind section "__TEXT,__StaticInit,regular,pure_instructions" {
+// CHECK-NOEXC: define internal void @_GLOBAL__I_a() [[NUW:#[0-9]+]] section "__TEXT,__StaticInit,regular,pure_instructions" {
+
+// CHECK-NOEXC: attributes [[NUW]] = { nounwind }

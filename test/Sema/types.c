@@ -43,7 +43,7 @@ int i[(short)1];
 
 enum e { e_1 };
 extern int j[sizeof(enum e)];  // expected-note {{previous definition}}
-int j[42];   // expected-error {{redefinition of 'j' with a different type}}
+int j[42];   // expected-error {{redefinition of 'j' with a different type: 'int [42]' vs 'int [4]'}}
 
 // rdar://6880104
 _Decimal32 x;  // expected-error {{GNU decimal type extension not supported}}
@@ -53,7 +53,7 @@ _Decimal32 x;  // expected-error {{GNU decimal type extension not supported}}
 int __attribute__ ((vector_size (8), vector_size (8))) v;  // expected-error {{invalid vector element type}}
 
 void test(int i) {
-  char c = (char __attribute__((align(8)))) i; // expected-error {{'align' attribute ignored when parsing type}}
+  char c = (char __attribute__((align(8)))) i; // expected-warning {{'align' attribute ignored when parsing type}}
 }
 
 // http://llvm.org/PR11082
@@ -64,3 +64,11 @@ void test(int i) {
 void test2(int i) {
   char c = (char __attribute__((may_alias))) i;
 }
+
+// vector size too large
+int __attribute__ ((vector_size(8192))) x1; // expected-error {{vector size too large}}
+typedef int __attribute__ ((ext_vector_type(8192))) x2; // expected-error {{vector size too large}}
+
+// no support for vector enum type
+enum { e_2 } x3 __attribute__((vector_size(64))); // expected-error {{invalid vector element type}}
+

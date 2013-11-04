@@ -19,18 +19,22 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
     endif()
   endif()
 
-  if( NOT EXISTS "${CLANG_PATH_TO_LLVM_BUILD}/bin/llvm-tblgen${CMAKE_EXECUTABLE_SUFFIX}" )
-    # Looking for bin/Debug/llvm-tblgen is a complete hack. How can we get
+  if (EXISTS "${CLANG_PATH_TO_LLVM_BUILD}/bin/llvm-config${CMAKE_EXECUTABLE_SUFFIX}")
+    set (PATH_TO_LLVM_CONFIG "${CLANG_PATH_TO_LLVM_BUILD}/bin/llvm-config${CMAKE_EXECUTABLE_SUFFIX}")
+  elseif (EXISTS "${CLANG_PATH_TO_LLVM_BUILD}/bin/Debug/llvm-config${CMAKE_EXECUTABLE_SUFFIX}")
+    # Looking for bin/Debug/llvm-config is a complete hack. How can we get
     # around this?
-    if( NOT EXISTS "${CLANG_PATH_TO_LLVM_BUILD}/bin/Debug/llvm-tblgen${CMAKE_EXECUTABLE_SUFFIX}" )
-      message(FATAL_ERROR "Please set CLANG_PATH_TO_LLVM_BUILD to a directory containing a LLVM build.")
-    endif()
+    set (PATH_TO_LLVM_CONFIG "${CLANG_PATH_TO_LLVM_BUILD}/bin/Debug/llvm-config${CMAKE_EXECUTABLE_SUFFIX}")
+  else()
+    message(FATAL_ERROR "Please set CLANG_PATH_TO_LLVM_BUILD to a directory containing a LLVM build.")
   endif()
 
   list(APPEND CMAKE_MODULE_PATH "${CLANG_PATH_TO_LLVM_BUILD}/share/llvm/cmake")
 
   get_filename_component(PATH_TO_LLVM_BUILD ${CLANG_PATH_TO_LLVM_BUILD}
     ABSOLUTE)
+
+  option(LLVM_INSTALL_TOOLCHAIN_ONLY "Only include toolchain files in the 'install' target." OFF)
 
   include(AddLLVM)
   include(TableGen)
@@ -46,12 +50,8 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
   include_directories("${PATH_TO_LLVM_BUILD}/include" "${LLVM_MAIN_INCLUDE_DIR}")
   link_directories("${PATH_TO_LLVM_BUILD}/lib")
 
-  if( EXISTS "${CLANG_PATH_TO_LLVM_BUILD}/bin/llvm-tblgen${CMAKE_EXECUTABLE_SUFFIX}" )
-    set(LLVM_TABLEGEN_EXE "${PATH_TO_LLVM_BUILD}/bin/llvm-tblgen${CMAKE_EXECUTABLE_SUFFIX}")
-  else()
-    # FIXME: This is an utter hack.
-    set(LLVM_TABLEGEN_EXE "${PATH_TO_LLVM_BUILD}/bin/Debug/llvm-tblgen${CMAKE_EXECUTABLE_SUFFIX}")
-  endif()
+  exec_program("${PATH_TO_LLVM_CONFIG} --bindir" OUTPUT_VARIABLE LLVM_BINARY_DIR)
+  set(LLVM_TABLEGEN_EXE "${LLVM_BINARY_DIR}/llvm-tblgen${CMAKE_EXECUTABLE_SUFFIX}")
 
   # Define the default arguments to use with 'lit', and an option for the user
   # to override.
@@ -66,6 +66,11 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
   set( CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib )
 
   set( CLANG_BUILT_STANDALONE 1 )
+
+  find_package(LibXml2)
+  if (LIBXML2_FOUND)
+    set(CLANG_HAVE_LIBXML 1)
+  endif ()
 endif()
 
 set(CLANG_RESOURCE_DIR "" CACHE STRING
@@ -84,6 +89,16 @@ set(CLANG_VENDOR "" CACHE STRING
 if( CLANG_VENDOR )
   add_definitions( -DCLANG_VENDOR="${CLANG_VENDOR} " )
 endif()
+
+set(CLANG_REPOSITORY_STRING "" CACHE STRING
+  "Vendor-specific text for showing the repository the source is taken from.")
+
+if(CLANG_REPOSITORY_STRING)
+  add_definitions(-DCLANG_REPOSITORY_STRING="${CLANG_REPOSITORY_STRING}")
+endif()
+
+set(CLANG_VENDOR_UTI "org.llvm.clang" CACHE STRING
+  "Vendor-specific uti.")
 
 set(CLANG_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(CLANG_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -132,16 +147,22 @@ configure_file(
 
 # Add appropriate flags for GCC
 if (LLVM_COMPILER_IS_GCC_COMPATIBLE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-common -Woverloaded-virtual -Wcast-qual -fno-strict-aliasing -pedantic -Wno-long-long -Wall -W -Wno-unused-parameter -Wwrite-strings")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-common -Woverloaded-virtual -Wcast-qual -fno-strict-aliasing")
+
+  # Enable -pedantic for Clang even if it's not enabled for LLVM.
+  if (NOT LLVM_ENABLE_PEDANTIC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wno-long-long")
+  endif ()
+
+  check_cxx_compiler_flag("-Werror -Wnested-anon-types" CXX_SUPPORTS_NO_NESTED_ANON_TYPES_FLAG)
+  if( CXX_SUPPORTS_NO_NESTED_ANON_TYPES_FLAG )
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-nested-anon-types" )
+  endif()
 endif ()
 
 if (APPLE)
-  set(CMAKE_MODULE_LINKER_FLAGS "-Wl,-flat_namespace -Wl,-undefined -Wl,suppress")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,-flat_namespace -Wl,-undefined -Wl,suppress")
 endif ()
-
-# libxml2 is an optional dependency, required only to run validation
-# tests on XML output.
-find_package(LibXml2)
 
 configure_file(
   ${CLANG_SOURCE_DIR}/include/clang/Config/config.h.cmake
@@ -181,16 +202,26 @@ endfunction(clang_tablegen)
 macro(add_clang_library name)
   llvm_process_sources(srcs ${ARGN})
   if(MSVC_IDE OR XCODE)
-    string( REGEX MATCHALL "/[^/]+" split_path ${CMAKE_CURRENT_SOURCE_DIR})
-    list( GET split_path -1 dir)
-    file( GLOB_RECURSE headers
-      ../../../include/clang/StaticAnalyzer${dir}/*.h
-      ../../../include/clang/StaticAnalyzer${dir}/*.td
-      ../../../include/clang/StaticAnalyzer${dir}/*.def
-      ../../include/clang${dir}/*.h
-      ../../include/clang${dir}/*.td
-      ../../include/clang${dir}/*.def)
-    set(srcs ${srcs} ${headers})
+    # Add public headers
+    file(RELATIVE_PATH lib_path
+      ${CLANG_SOURCE_DIR}/lib/
+      ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    if(NOT lib_path MATCHES "^[.][.]")
+      file( GLOB_RECURSE headers
+        ${CLANG_SOURCE_DIR}/include/clang/${lib_path}/*.h
+        ${CLANG_SOURCE_DIR}/include/clang/${lib_path}/*.def
+      )
+      set_source_files_properties(${headers} PROPERTIES HEADER_FILE_ONLY ON)
+
+      file( GLOB_RECURSE tds
+        ${CLANG_SOURCE_DIR}/include/clang/${lib_path}/*.td
+      )
+      source_group("TableGen descriptions" FILES ${tds})
+      set_source_files_properties(${tds}} PROPERTIES HEADER_FILE_ONLY ON)
+
+      set(srcs ${srcs} ${headers} ${tds})
+    endif()
   endif(MSVC_IDE OR XCODE)
   if (MODULE)
     set(libkind MODULE)
@@ -208,10 +239,13 @@ macro(add_clang_library name)
   target_link_libraries( ${name} ${LLVM_COMMON_LIBS} )
   link_system_libs( ${name} )
 
-  install(TARGETS ${name}
-    LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
-    ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX}
-    RUNTIME DESTINATION bin)
+  if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY OR ${name} STREQUAL "libclang")
+    install(TARGETS ${name}
+      LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
+      ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX}
+      RUNTIME DESTINATION bin)
+  endif()
+
   set_target_properties(${name} PROPERTIES FOLDER "Clang libraries")
 endmacro(add_clang_library)
 
@@ -225,23 +259,58 @@ include_directories(BEFORE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   )
 
-install(DIRECTORY include/
+if (NOT LLVM_INSTALL_TOOLCHAIN_ONLY)
+  install(DIRECTORY include/
+    DESTINATION include
+    FILES_MATCHING
+    PATTERN "*.def"
+    PATTERN "*.h"
+    PATTERN "config.h" EXCLUDE
+    PATTERN ".svn" EXCLUDE
+    )
+
+  install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
+    DESTINATION include
+    FILES_MATCHING
+    PATTERN "CMakeFiles" EXCLUDE
+    PATTERN "*.inc"
+    )
+endif()
+
+install(DIRECTORY include/clang-c
   DESTINATION include
   FILES_MATCHING
-  PATTERN "*.def"
   PATTERN "*.h"
-  PATTERN "config.h" EXCLUDE
   PATTERN ".svn" EXCLUDE
   )
 
-install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/include/
-  DESTINATION include
-  FILES_MATCHING
-  PATTERN "CMakeFiles" EXCLUDE
-  PATTERN "*.inc"
-  )
-
 add_definitions( -D_GNU_SOURCE )
+
+option(CLANG_ENABLE_ARCMT "Build ARCMT." ON)
+option(CLANG_ENABLE_REWRITER "Build rewriter." ON)
+option(CLANG_ENABLE_STATIC_ANALYZER "Build static analyzer." ON)
+
+if (NOT CLANG_ENABLE_REWRITER AND CLANG_ENABLE_ARCMT)
+  message(FATAL_ERROR "Cannot disable rewriter while enabling ARCMT")
+endif()
+
+if (NOT CLANG_ENABLE_REWRITER AND CLANG_ENABLE_STATIC_ANALYZER)
+  message(FATAL_ERROR "Cannot disable rewriter while enabling static analyzer")
+endif()
+
+if (NOT CLANG_ENABLE_STATIC_ANALYZER AND CLANG_ENABLE_ARCMT)
+  message(FATAL_ERROR "Cannot disable static analyzer while enabling ARCMT")
+endif()
+
+if(CLANG_ENABLE_ARCMT)
+  add_definitions(-DCLANG_ENABLE_ARCMT)
+endif()
+if(CLANG_ENABLE_REWRITER)
+  add_definitions(-DCLANG_ENABLE_REWRITER)
+endif()
+if(CLANG_ENABLE_STATIC_ANALYZER)
+  add_definitions(-DCLANG_ENABLE_STATIC_ANALYZER)
+endif()
 
 # Clang version information
 set(CLANG_EXECUTABLE_VERSION
@@ -262,13 +331,19 @@ add_subdirectory(runtime)
 option(CLANG_BUILD_EXAMPLES "Build CLANG example programs by default." OFF)
 add_subdirectory(examples)
 
-# TODO: docs.
-add_subdirectory(test)
+option(CLANG_INCLUDE_TESTS
+       "Generate build targets for the Clang unit tests."
+       ${LLVM_INCLUDE_TESTS})
 
-if( LLVM_INCLUDE_TESTS )
-  if( NOT CLANG_BUILT_STANDALONE )
-    add_subdirectory(unittests)
-  endif()
+if( CLANG_INCLUDE_TESTS )
+  add_subdirectory(test)
+  add_subdirectory(unittests)
+endif()
+
+option(CLANG_INCLUDE_DOCS "Generate build targets for the Clang docs."
+  ${LLVM_INCLUDE_DOCS})
+if( CLANG_INCLUDE_DOCS )
+  add_subdirectory(docs)
 endif()
 
 # Workaround for MSVS10 to avoid the Dialog Hell
@@ -283,3 +358,5 @@ endif()
 set(BUG_REPORT_URL "http://llvm.org/bugs/" CACHE STRING
   "Default URL where bug reports are to be submitted.")
 
+set(CLANG_ORDER_FILE "" CACHE FILEPATH
+  "Order file to use when compiling clang in order to improve startup time.")

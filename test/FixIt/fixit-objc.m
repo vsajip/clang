@@ -11,7 +11,7 @@
 @protocol X;
 
 void foo() {
-  <X> *P;    // expected-warning{{protocol qualifiers without 'id' is archaic}}
+  <X> *P;    // expected-warning{{protocol has no object type specified; defaults to qualified 'id'}}
 }
 
 @class A;
@@ -27,13 +27,13 @@ void g(NSString *a); // expected-note{{passing argument to parameter 'a' here}}
 void h(id a); // expected-note 2{{passing argument to parameter 'a' here}}
 
 void f(Test *t) {
-  NSString *a = "Foo"; // expected-warning {{incompatible pointer types initializing 'NSString *' with an expression of type 'char [4]'}}
+  NSString *a = "Foo"; // expected-warning {{string literal must be prefixed by '@'}}
   id b = "Foo"; // expected-warning {{incompatible pointer types initializing 'id' with an expression of type 'char [4]'}}
-  g("Foo"); // expected-warning{{incompatible pointer types passing 'char [4]' to parameter of type 'NSString *'}}
+  g("Foo"); // expected-warning {{string literal must be prefixed by '@'}}
   h("Foo"); // expected-warning{{incompatible pointer types passing 'char [4]' to parameter of type 'id'}}
   h(("Foo")); // expected-warning{{incompatible pointer types passing 'char [4]' to parameter of type 'id'}}
-  [t test:"Foo"]; // expected-warning{{incompatible pointer types sending 'char [4]' to parameter of type 'NSString *'}}
-  t.property = "Foo"; // expected-warning{{incompatible pointer types assigning to 'NSString *' from 'char [4]'}}
+  [t test:"Foo"]; // expected-warning {{string literal must be prefixed by '@'}}
+  t.property = "Foo"; // expected-warning {{string literal must be prefixed by '@'}}
 
   // <rdar://problem/6896493>
   [t test:@"Foo"]]; // expected-error{{extraneous ']' before ';'}}
@@ -49,7 +49,7 @@ void f(Test *t) {
 @property (assign) int y;
 @end
 
-int f0(Radar7861841 *a) { return a.x; } // expected-error {{property 'x' not found on object of type 'Radar7861841 *'; did you mean to access ivar 'x'}}
+int f0(Radar7861841 *a) { return a.x; } // expected-error {{property 'x' not found on object of type 'Radar7861841 *'; did you mean to access instance variable 'x'}}
 
 int f1(Radar7861841 *a) { return a->y; } // expected-error {{property 'y' found on object of type 'Radar7861841 *'; did you mean to access it with the "." operator?}}
 

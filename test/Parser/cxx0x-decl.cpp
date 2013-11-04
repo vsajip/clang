@@ -1,4 +1,4 @@
-// RUN: %clang_cc1 -verify -fsyntax-only -std=c++11 -pedantic %s
+// RUN: %clang_cc1 -verify -fsyntax-only -std=c++11 -pedantic-errors -triple x86_64-linux-gnu %s
 
 // Make sure we know these are legitimate commas and not typos for ';'.
 namespace Commas {
@@ -23,10 +23,84 @@ class ExtraSemiAfterMemFn {
   void f() = delete // expected-error {{expected ';' after delete}}
   void g() = delete; // ok
   void h() = delete;; // ok
-  void i() = delete;;; // expected-warning {{extra ';' after member function definition}}
+  void i() = delete;;; // expected-error {{extra ';' after member function definition}}
 };
 
-// This is technically okay, but not likely what the user expects, so we will
-// pedantically warn on it
-int *const const p = 0; // expected-warning {{duplicate 'const' declaration specifier}}
-const const int *q = 0; // expected-warning {{duplicate 'const' declaration specifier}}
+int *const const p = 0; // expected-error {{duplicate 'const' declaration specifier}}
+const const int *q = 0; // expected-error {{duplicate 'const' declaration specifier}}
+
+struct MultiCV {
+  void f() const const; // expected-error {{duplicate 'const' declaration specifier}}
+};
+
+static_assert(something, ""); // expected-error {{undeclared identifier}}
+
+// PR9903
+struct SS {
+  typedef void d() = default; // expected-error {{function definition declared 'typedef'}} expected-error {{only special member functions may be defaulted}}
+};
+
+using PR14855 = int S::; // expected-error {{expected ';' after alias declaration}}
+
+// Ensure that 'this' has a const-qualified type in a trailing return type for
+// a constexpr function.
+struct ConstexprTrailingReturn {
+  int n;
+  constexpr auto f() const -> decltype((n));
+};
+constexpr const int &ConstexprTrailingReturn::f() const { return n; }
+
+namespace TestIsValidAfterTypeSpecifier {
+struct s {} v;
+
+struct s
+thread_local tl;
+
+struct s
+&r0 = v;
+
+struct s
+&&r1 = s();
+
+struct s
+bitand r2 = v;
+
+struct s
+and r3 = s();
+
+enum E {};
+enum E
+[[]] e;
+
+}
+
+namespace PR5066 {
+  using T = int (*f)(); // expected-error {{type-id cannot have a name}}
+  template<typename T> using U = int (*f)(); // expected-error {{type-id cannot have a name}}
+  auto f() -> int (*f)(); // expected-error {{type-id cannot have a name}}
+  auto g = []() -> int (*f)() {}; // expected-error {{type-id cannot have a name}}
+}
+
+namespace FinalOverride {
+  struct Base {
+    virtual void *f();
+    virtual void *g();
+    virtual void *h();
+    virtual void *i();
+  };
+  struct Derived : Base {
+    virtual auto f() -> void *final;
+    virtual auto g() -> void *override;
+    virtual auto h() -> void *final override;
+    virtual auto i() -> void *override final;
+  };
+}
+
+namespace UsingDeclAttrs {
+  using T __attribute__((aligned(1))) = int;
+  using T [[gnu::aligned(1)]] = int;
+  static_assert(alignof(T) == 1, "");
+
+  using [[gnu::aligned(1)]] T = int; // expected-error {{an attribute list cannot appear here}}
+  using T = int [[gnu::aligned(1)]]; // expected-error {{'aligned' attribute cannot be applied to types}}
+}

@@ -16,18 +16,21 @@ LINK_LIBS_IN_SHARED = 1
 SHARED_LIBRARY = 1
 
 include $(CLANG_LEVEL)/../../Makefile.config
-LINK_COMPONENTS := $(TARGETS_TO_BUILD) asmparser support mc
-USEDLIBS = clangARCMigrate.a clangRewriteCore.a clangRewriteFrontend.a \
-	   clangFrontend.a clangDriver.a \
+LINK_COMPONENTS := $(TARGETS_TO_BUILD) asmparser bitreader support mc option
+USEDLIBS = clangIndex.a clangFrontend.a clangDriver.a \
+	   clangTooling.a \
 	   clangSerialization.a \
-	   clangParse.a clangSema.a clangEdit.a clangAnalysis.a \
-	   clangAST.a clangLex.a clangTooling.a clangBasic.a
+	   clangParse.a clangSema.a \
+	   clangARCMigrate.a clangRewriteFrontend.a clangRewriteCore.a \
+	   clangAnalysis.a clangEdit.a \
+	   clangAST.a clangLex.a clangBasic.a \
+	   clangFormat.a
 
 include $(CLANG_LEVEL)/Makefile
 
 # Add soname to the library.
-ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux FreeBSD GNU))
-        LDFLAGS += -Wl,-soname,lib$(LIBRARYNAME)$(SHLIBEXT)
+ifeq ($(HOST_OS), $(filter $(HOST_OS), Linux FreeBSD GNU GNU/kFreeBSD))
+        LLVMLibsOptions += -Wl,-soname,lib$(LIBRARYNAME)$(SHLIBEXT)
 endif
 
 ##===----------------------------------------------------------------------===##
@@ -51,5 +54,11 @@ ifeq ($(HOST_OS),Darwin)
     ifneq ($(DARWIN_VERS),8)
        LLVMLibsOptions += -Wl,-install_name \
                           -Wl,"@rpath/lib$(LIBRARYNAME)$(SHLIBEXT)"
+    endif
+
+    # If we're doing an Apple-style build, add the LTO object path.
+    ifeq ($(RC_XBS),YES)
+       TempFile        := $(shell mkdir -p ${OBJROOT}/dSYMs ; mktemp ${OBJROOT}/dSYMs/clang-lto.XXXXXX)
+       LLVMLibsOptions += -Wl,-object_path_lto -Wl,$(TempFile)
     endif
 endif

@@ -15,10 +15,10 @@
 #define LLVM_CLANG_REWRITER_TEST_CONTEXT_H
 
 #include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/Frontend/DiagnosticOptions.h"
 #include "clang/Frontend/TextDiagnosticPrinter.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "llvm/Support/FileSystem.h"
@@ -35,20 +35,17 @@ namespace clang {
 class RewriterTestContext {
  public:
   RewriterTestContext()
-      : Diagnostics(llvm::IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs)),
-        DiagnosticPrinter(llvm::outs(), DiagnosticOptions()),
+      : DiagOpts(new DiagnosticOptions()),
+        Diagnostics(IntrusiveRefCntPtr<DiagnosticIDs>(new DiagnosticIDs),
+                    &*DiagOpts),
+        DiagnosticPrinter(llvm::outs(), &*DiagOpts),
         Files((FileSystemOptions())),
         Sources(Diagnostics, Files),
         Rewrite(Sources, Options) {
     Diagnostics.setClient(&DiagnosticPrinter, false);
   }
 
-  ~RewriterTestContext() {
-    if (!TemporaryDirectory.empty()) {
-      uint32_t RemovedCount = 0;
-      llvm::sys::fs::remove_all(TemporaryDirectory.str(), RemovedCount);
-    }
-  }
+  ~RewriterTestContext() {}
 
   FileID createInMemoryFile(StringRef Name, StringRef Content) {
     const llvm::MemoryBuffer *Source =
@@ -60,26 +57,25 @@ class RewriterTestContext {
     return Sources.createFileID(Entry, SourceLocation(), SrcMgr::C_User);
   }
 
+  // FIXME: this code is mostly a duplicate of
+  // unittests/Tooling/RefactoringTest.cpp. Figure out a way to share it.
   FileID createOnDiskFile(StringRef Name, StringRef Content) {
-    if (TemporaryDirectory.empty()) {
-      int FD;
-      bool error =
-        llvm::sys::fs::unique_file("rewriter-test-%%-%%-%%-%%/anchor", FD,
-                                   TemporaryDirectory);
-      assert(!error); (void)error;
-      llvm::raw_fd_ostream Closer(FD, /*shouldClose=*/true);
-      TemporaryDirectory = llvm::sys::path::parent_path(TemporaryDirectory);
-    }
-    llvm::SmallString<1024> Path(TemporaryDirectory);
-    llvm::sys::path::append(Path, Name);
-    std::string ErrorInfo;
-    llvm::raw_fd_ostream OutStream(Path.c_str(),
-                                   ErrorInfo, llvm::raw_fd_ostream::F_Binary);
-    assert(ErrorInfo.empty());
+    SmallString<1024> Path;
+    int FD;
+    llvm::error_code EC =
+        llvm::sys::fs::createTemporaryFile(Name, "", FD, Path);
+    assert(!EC);
+    (void)EC;
+
+    llvm::raw_fd_ostream OutStream(FD, true);
     OutStream << Content;
     OutStream.close();
     const FileEntry *File = Files.getFile(Path);
     assert(File != NULL);
+
+    StringRef Found = TemporaryFiles.GetOrCreateValue(Name, Path.str()).second;
+    assert(Found == Path);
+    (void)Found;
     return Sources.createFileID(File, SourceLocation(), SrcMgr::C_User);
   }
 
@@ -99,8 +95,8 @@ class RewriterTestContext {
   }
 
   std::string getFileContentFromDisk(StringRef Name) {
-    llvm::SmallString<1024> Path(TemporaryDirectory.str());
-    llvm::sys::path::append(Path, Name);
+    std::string Path = TemporaryFiles.lookup(Name);
+    assert(!Path.empty());
     // We need to read directly from the FileManager without relaying through
     // a FileEntry, as otherwise we'd read through an already opened file
     // descriptor, which might not see the changes made.
@@ -109,6 +105,7 @@ class RewriterTestContext {
     return Files.getBufferForFile(Path, NULL)->getBuffer();
   }
 
+  IntrusiveRefCntPtr<DiagnosticOptions> DiagOpts;
   DiagnosticsEngine Diagnostics;
   TextDiagnosticPrinter DiagnosticPrinter;
   FileManager Files;
@@ -117,7 +114,7 @@ class RewriterTestContext {
   Rewriter Rewrite;
 
   // Will be set once on disk files are generated.
-  SmallString<128> TemporaryDirectory;
+  llvm::StringMap<std::string> TemporaryFiles;
 };
 
 } // end namespace clang

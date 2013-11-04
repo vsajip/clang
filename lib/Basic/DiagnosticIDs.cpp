@@ -16,8 +16,8 @@
 #include "clang/Basic/DiagnosticCategories.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/ErrorHandling.h"
-
 #include <map>
 using namespace clang;
 
@@ -36,7 +36,7 @@ enum {
 };
 
 struct StaticDiagInfoRec {
-  unsigned short DiagID;
+  uint16_t DiagID;
   unsigned Mapping : 3;
   unsigned Class : 3;
   unsigned SFINAE : 1;
@@ -83,18 +83,16 @@ static const StaticDiagInfoRec StaticDiagInfo[] = {
 #include "clang/Basic/DiagnosticSemaKinds.inc"
 #include "clang/Basic/DiagnosticAnalysisKinds.inc"
 #undef DIAG
-  { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 };
 
-static const unsigned StaticDiagInfoSize =
-  sizeof(StaticDiagInfo)/sizeof(StaticDiagInfo[0])-1;
+static const unsigned StaticDiagInfoSize = llvm::array_lengthof(StaticDiagInfo);
 
 /// GetDiagInfo - Return the StaticDiagInfoRec entry for the specified DiagID,
 /// or null if the ID is invalid.
 static const StaticDiagInfoRec *GetDiagInfo(unsigned DiagID) {
   // If assertions are enabled, verify that the StaticDiagInfo array is sorted.
 #ifndef NDEBUG
-  static bool IsFirst = true;
+  static bool IsFirst = true; // So the check is only performed on first call.
   if (IsFirst) {
     for (unsigned i = 1; i != StaticDiagInfoSize; ++i) {
       assert(StaticDiagInfo[i-1].DiagID != StaticDiagInfo[i].DiagID &&
@@ -108,16 +106,49 @@ static const StaticDiagInfoRec *GetDiagInfo(unsigned DiagID) {
   }
 #endif
 
-  // Search the diagnostic table with a binary search.
-  StaticDiagInfoRec Find = { static_cast<unsigned short>(DiagID),
-                             0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-  const StaticDiagInfoRec *Found =
-    std::lower_bound(StaticDiagInfo, StaticDiagInfo + StaticDiagInfoSize, Find);
-  if (Found == StaticDiagInfo + StaticDiagInfoSize ||
-      Found->DiagID != DiagID)
+  // Out of bounds diag. Can't be in the table.
+  using namespace diag;
+  if (DiagID >= DIAG_UPPER_LIMIT || DiagID <= DIAG_START_COMMON)
     return 0;
 
+  // Compute the index of the requested diagnostic in the static table.
+  // 1. Add the number of diagnostics in each category preceeding the
+  //    diagnostic and of the category the diagnostic is in. This gives us
+  //    the offset of the category in the table.
+  // 2. Subtract the number of IDs in each category from our ID. This gives us
+  //    the offset of the diagnostic in the category.
+  // This is cheaper than a binary search on the table as it doesn't touch
+  // memory at all.
+  unsigned Offset = 0;
+  unsigned ID = DiagID - DIAG_START_COMMON - 1;
+#define CATEGORY(NAME, PREV) \
+  if (DiagID > DIAG_START_##NAME) { \
+    Offset += NUM_BUILTIN_##PREV##_DIAGNOSTICS - DIAG_START_##PREV - 1; \
+    ID -= DIAG_START_##NAME - DIAG_START_##PREV; \
+  }
+CATEGORY(DRIVER, COMMON)
+CATEGORY(FRONTEND, DRIVER)
+CATEGORY(SERIALIZATION, FRONTEND)
+CATEGORY(LEX, SERIALIZATION)
+CATEGORY(PARSE, LEX)
+CATEGORY(AST, PARSE)
+CATEGORY(COMMENT, AST)
+CATEGORY(SEMA, COMMENT)
+CATEGORY(ANALYSIS, SEMA)
+#undef CATEGORY
+
+  // Avoid out of bounds reads.
+  if (ID + Offset >= StaticDiagInfoSize)
+    return 0;
+
+  assert(ID < StaticDiagInfoSize && Offset < StaticDiagInfoSize);
+
+  const StaticDiagInfoRec *Found = &StaticDiagInfo[ID + Offset];
+  // If the diag id doesn't match we found a different diag, abort. This can
+  // happen when this function is called with an ID that points into a hole in
+  // the diagID space.
+  if (Found->DiagID != DiagID)
+    return 0;
   return Found;
 }
 
@@ -190,7 +221,7 @@ static const StaticDiagCategoryRec CategoryNameTable[] = {
 
 /// getNumberOfCategories - Return the number of categories
 unsigned DiagnosticIDs::getNumberOfCategories() {
-  return sizeof(CategoryNameTable) / sizeof(CategoryNameTable[0])-1;
+  return llvm::array_lengthof(CategoryNameTable) - 1;
 }
 
 /// getCategoryNameFromID - Given a category ID, return the name of the
@@ -247,14 +278,14 @@ namespace clang {
       /// diagnostic.
       StringRef getDescription(unsigned DiagID) const {
         assert(this && DiagID-DIAG_UPPER_LIMIT < DiagInfo.size() &&
-               "Invalid diagnosic ID");
+               "Invalid diagnostic ID");
         return DiagInfo[DiagID-DIAG_UPPER_LIMIT].second;
       }
 
       /// getLevel - Return the level of the specified custom diagnostic.
       DiagnosticIDs::Level getLevel(unsigned DiagID) const {
         assert(this && DiagID-DIAG_UPPER_LIMIT < DiagInfo.size() &&
-               "Invalid diagnosic ID");
+               "Invalid diagnostic ID");
         return DiagInfo[DiagID-DIAG_UPPER_LIMIT].first;
       }
 
@@ -291,7 +322,7 @@ DiagnosticIDs::~DiagnosticIDs() {
 }
 
 /// getCustomDiagID - Return an ID for a diagnostic with the specified message
-/// and level.  If this is the first request for this diagnosic, it is
+/// and level.  If this is the first request for this diagnostic, it is
 /// registered and created, otherwise the existing ID is returned.
 unsigned DiagnosticIDs::getCustomDiagID(Level L, StringRef Message) {
   if (CustomDiagInfo == 0)
@@ -470,23 +501,23 @@ DiagnosticIDs::getDiagnosticLevel(unsigned DiagID, unsigned DiagClass,
   return Result;
 }
 
-struct clang::WarningOption {
-  // Be safe with the size of 'NameLen' because we don't statically check if
-  // the size will fit in the field; the struct size won't decrease with a
-  // shorter type anyway.
-  size_t NameLen;
-  const char *NameStr;
-  const short *Members;
-  const short *SubGroups;
-
-  StringRef getName() const {
-    return StringRef(NameStr, NameLen);
-  }
-};
-
 #define GET_DIAG_ARRAYS
 #include "clang/Basic/DiagnosticGroups.inc"
 #undef GET_DIAG_ARRAYS
+
+namespace {
+  struct WarningOption {
+    uint16_t NameOffset;
+    uint16_t Members;
+    uint16_t SubGroups;
+
+    // String is stored with a pascal-style length byte.
+    StringRef getName() const {
+      return StringRef(DiagGroupNames + NameOffset + 1,
+                       DiagGroupNames[NameOffset]);
+    }
+  };
+}
 
 // Second the table of options, sorted by name for fast binary lookup.
 static const WarningOption OptionTable[] = {
@@ -494,12 +525,10 @@ static const WarningOption OptionTable[] = {
 #include "clang/Basic/DiagnosticGroups.inc"
 #undef GET_DIAG_TABLE
 };
-static const size_t OptionTableSize =
-sizeof(OptionTable) / sizeof(OptionTable[0]);
+static const size_t OptionTableSize = llvm::array_lengthof(OptionTable);
 
-static bool WarningOptionCompare(const WarningOption &LHS,
-                                 const WarningOption &RHS) {
-  return LHS.getName() < RHS.getName();
+static bool WarningOptionCompare(const WarningOption &LHS, StringRef RHS) {
+  return LHS.getName() < RHS;
 }
 
 /// getWarningOptionForDiag - Return the lowest-level warning option that
@@ -511,41 +540,35 @@ StringRef DiagnosticIDs::getWarningOptionForDiag(unsigned DiagID) {
   return StringRef();
 }
 
-void DiagnosticIDs::getDiagnosticsInGroup(
-  const WarningOption *Group,
-  llvm::SmallVectorImpl<diag::kind> &Diags) const
-{
+static void getDiagnosticsInGroup(const WarningOption *Group,
+                                  SmallVectorImpl<diag::kind> &Diags) {
   // Add the members of the option diagnostic set.
-  if (const short *Member = Group->Members) {
-    for (; *Member != -1; ++Member)
-      Diags.push_back(*Member);
-  }
+  const int16_t *Member = DiagArrays + Group->Members;
+  for (; *Member != -1; ++Member)
+    Diags.push_back(*Member);
 
   // Add the members of the subgroups.
-  if (const short *SubGroups = Group->SubGroups) {
-    for (; *SubGroups != (short)-1; ++SubGroups)
-      getDiagnosticsInGroup(&OptionTable[(short)*SubGroups], Diags);
-  }
+  const int16_t *SubGroups = DiagSubGroups + Group->SubGroups;
+  for (; *SubGroups != (int16_t)-1; ++SubGroups)
+    getDiagnosticsInGroup(&OptionTable[(short)*SubGroups], Diags);
 }
 
 bool DiagnosticIDs::getDiagnosticsInGroup(
-  StringRef Group,
-  llvm::SmallVectorImpl<diag::kind> &Diags) const
-{
-  WarningOption Key = { Group.size(), Group.data(), 0, 0 };
+    StringRef Group,
+    SmallVectorImpl<diag::kind> &Diags) const {
   const WarningOption *Found =
-  std::lower_bound(OptionTable, OptionTable + OptionTableSize, Key,
+  std::lower_bound(OptionTable, OptionTable + OptionTableSize, Group,
                    WarningOptionCompare);
   if (Found == OptionTable + OptionTableSize ||
       Found->getName() != Group)
     return true; // Option not found.
 
-  getDiagnosticsInGroup(Found, Diags);
+  ::getDiagnosticsInGroup(Found, Diags);
   return false;
 }
 
 void DiagnosticIDs::getAllDiagnostics(
-                               llvm::SmallVectorImpl<diag::kind> &Diags) const {
+                               SmallVectorImpl<diag::kind> &Diags) const {
   for (unsigned i = 0; i != StaticDiagInfoSize; ++i)
     Diags.push_back(StaticDiagInfo[i].DiagID);
 }
@@ -628,9 +651,13 @@ bool DiagnosticIDs::ProcessDiag(DiagnosticsEngine &Diag) const {
   if (DiagLevel >= DiagnosticIDs::Error) {
     if (isUnrecoverable(DiagID))
       Diag.UnrecoverableErrorOccurred = true;
-    
+
+    // Warnings which have been upgraded to errors do not prevent compilation.
+    if (isDefaultMappingAsError(DiagID))
+      Diag.UncompilableErrorOccurred = true;
+
+    Diag.ErrorOccurred = true;
     if (Diag.Client->IncludeInDiagnosticCounts()) {
-      Diag.ErrorOccurred = true;
       ++Diag.NumErrors;
     }
 
@@ -686,4 +713,3 @@ bool DiagnosticIDs::isARCDiagnostic(unsigned DiagID) {
   unsigned cat = getCategoryNumberForDiag(DiagID);
   return DiagnosticIDs::getCategoryNameFromID(cat).startswith("ARC ");
 }
-

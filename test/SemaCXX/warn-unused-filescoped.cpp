@@ -1,4 +1,40 @@
-// RUN: %clang_cc1 -fsyntax-only -verify -Wunused -Wunused-member-function %s
+// RUN: %clang_cc1 -fsyntax-only -verify -Wunused -Wunused-member-function -Wno-c++11-extensions -std=c++98 %s
+// RUN: %clang_cc1 -fsyntax-only -verify -Wunused -Wunused-member-function -std=c++11 %s
+
+#ifdef HEADER
+
+static void headerstatic() {}  // expected-warning{{unused}}
+static inline void headerstaticinline() {}
+
+namespace {
+  void headeranon() {}  // expected-warning{{unused}}
+  inline void headerinlineanon() {}
+}
+
+namespace test7
+{
+  template<typename T>
+  static inline void foo(T) { }
+
+  // This should not emit an unused-function warning since it inherits
+  // the static storage type from the base template.
+  template<>
+  inline void foo(int) {  }
+
+  // Partial specialization
+  template<typename T, typename U>
+  static inline void bar(T, U) { }
+
+  template<typename U>
+  inline void bar(int, U) { }
+
+  template<>
+  inline void bar(int, int) { }
+};
+
+#else
+#define HEADER
+#include "warn-unused-filescoped.cpp"
 
 static void f1(); // expected-warning{{unused}}
 
@@ -36,8 +72,10 @@ namespace {
 
 void S::m3() { }  // expected-warning{{unused}}
 
-static inline void f4() { }
-const unsigned int cx = 0;
+static inline void f4() { }  // expected-warning{{unused}}
+const unsigned int cx = 0; // expected-warning{{unused}}
+const unsigned int cy = 0;
+int f5() { return cy; }
 
 static int x1;  // expected-warning{{unused}}
 
@@ -87,3 +125,72 @@ namespace rdar8733476 {
     foo();
   }
 }
+
+namespace test5 {
+  static int n = 0;
+  static int &r = n;
+  int f(int &);
+  int k = f(r);
+
+  // FIXME: We should produce warnings for both of these.
+  static const int m = n;
+  int x = sizeof(m);
+  static const double d = 0.0; // expected-warning{{not needed and will not be emitted}}
+  int y = sizeof(d);
+}
+
+namespace unused_nested {
+  class outer {
+    void func1();
+    struct {
+      void func2() {
+      }
+    } x;
+  };
+}
+
+namespace unused {
+  struct {
+    void func() { // expected-warning {{unused member function}}
+    }
+  } x; // expected-warning {{unused variable}}
+}
+
+namespace test6 {
+  typedef struct {
+    void bar();
+  } A;
+
+  typedef struct {
+    void bar();  // expected-warning {{unused member function 'bar'}}
+  } *B;
+
+  struct C {
+    void bar();
+  };
+}
+
+namespace pr14776 {
+  namespace {
+    struct X {};
+  }
+  X a = X(); // expected-warning {{unused variable 'a'}}
+  auto b = X(); // expected-warning {{unused variable 'b'}}
+}
+
+namespace UndefinedInternalStaticMember {
+  namespace {
+    struct X {
+      static const unsigned x = 3;
+      int y[x];
+    };
+  }
+}
+
+namespace test8 {
+static void func();
+void bar() { void func() __attribute__((used)); }
+static void func() {}
+}
+
+#endif

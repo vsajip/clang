@@ -16,10 +16,11 @@
 #ifndef LLVM_CLANG_STATICANALYZER_PATHSENSITIVE_CALL
 #define LLVM_CLANG_STATICANALYZER_PATHSENSITIVE_CALL
 
-#include "clang/Basic/SourceManager.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
+#include "clang/Analysis/AnalysisContext.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/ProgramState.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "llvm/ADT/PointerIntPair.h"
@@ -120,8 +121,7 @@ private:
   const LocationContext *LCtx;
   llvm::PointerUnion<const Expr *, const Decl *> Origin;
 
-  // DO NOT IMPLEMENT
-  CallEvent &operator=(const CallEvent &);
+  void operator=(const CallEvent &) LLVM_DELETED_FUNCTION;
 
 protected:
   // This is user data for subclasses.
@@ -162,11 +162,11 @@ protected:
   }
 
 
-  typedef SmallVectorImpl<const MemRegion *> RegionList;
+  typedef SmallVectorImpl<SVal> ValueList;
 
   /// \brief Used to specify non-argument regions that will be invalidated as a
   /// result of this call.
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const {}
+  virtual void getExtraInvalidatedValues(ValueList &Values) const {}
 
 public:
   virtual ~CallEvent() {}
@@ -181,7 +181,7 @@ public:
   }
 
   /// \brief The state in which the call is being evaluated.
-  ProgramStateRef getState() const {
+  const ProgramStateRef &getState() const {
     return State;
   }
 
@@ -249,6 +249,12 @@ public:
   /// \brief Returns the result type, adjusted for references.
   QualType getResultType() const;
 
+  /// \brief Returns the return value of the call.
+  ///
+  /// This should only be called if the CallEvent was created using a state in
+  /// which the return value has already been bound to the origin expression.
+  SVal getReturnValue() const;
+
   /// \brief Returns true if any of the arguments appear to represent callbacks.
   bool hasNonZeroCallbackArg() const;
 
@@ -259,6 +265,38 @@ public:
   // but we don't want duplicated lists of known APIs in the short term either.
   virtual bool argumentsMayEscape() const {
     return hasNonZeroCallbackArg();
+  }
+
+  /// \brief Returns true if the callee is an externally-visible function in the
+  /// top-level namespace, such as \c malloc.
+  ///
+  /// You can use this call to determine that a particular function really is
+  /// a library function and not, say, a C++ member function with the same name.
+  ///
+  /// If a name is provided, the function must additionally match the given
+  /// name.
+  ///
+  /// Note that this deliberately excludes C++ library functions in the \c std
+  /// namespace, but will include C library functions accessed through the
+  /// \c std namespace. This also does not check if the function is declared
+  /// as 'extern "C"', or if it uses C++ name mangling.
+  // FIXME: Add a helper for checking namespaces.
+  // FIXME: Move this down to AnyFunctionCall once checkers have more
+  // precise callbacks.
+  bool isGlobalCFunction(StringRef SpecificName = StringRef()) const;
+
+  /// \brief Returns the name of the callee, if its name is a simple identifier.
+  ///
+  /// Note that this will fail for Objective-C methods, blocks, and C++
+  /// overloaded operators. The former is named by a Selector rather than a
+  /// simple identifier, and the latter two do not have names.
+  // FIXME: Move this down to AnyFunctionCall once checkers have more
+  // precise callbacks.
+  const IdentifierInfo *getCalleeIdentifier() const {
+    const NamedDecl *ND = dyn_cast_or_null<NamedDecl>(getDecl());
+    if (!ND)
+      return 0;
+    return ND->getIdentifier();
   }
 
   /// \brief Returns an appropriate ProgramPoint for this call.
@@ -293,6 +331,16 @@ public:
   /// of some kind.
   static bool isCallStmt(const Stmt *S);
 
+  /// \brief Returns the result type of a function or method declaration.
+  ///
+  /// This will return a null QualType if the result type cannot be determined.
+  static QualType getDeclaredResultType(const Decl *D);
+
+  /// \brief Returns true if the given decl is known to be variadic.
+  ///
+  /// \p D must not be null.
+  static bool isVariadic(const Decl *D);
+
   // Iterator access to formal parameters and their types.
 private:
   typedef std::const_mem_fun_t<QualType, ParmVarDecl> get_type_fun;
@@ -302,19 +350,13 @@ public:
 
   /// Returns an iterator over the call's formal parameters.
   ///
-  /// If UseDefinitionParams is set, this will return the parameter decls
-  /// used in the callee's definition (suitable for inlining). Most of the
-  /// time it is better to use the decl found by name lookup, which likely
-  /// carries more annotations.
-  ///
   /// Remember that the number of formal parameters may not match the number
   /// of arguments for all calls. However, the first parameter will always
   /// correspond with the argument value returned by \c getArgSVal(0).
   ///
-  /// If the call has no accessible declaration (or definition, if
-  /// \p UseDefinitionParams is set), \c param_begin() will be equal to
-  /// \c param_end().
-  virtual param_iterator param_begin() const =0;
+  /// If the call has no accessible declaration, \c param_begin() will be equal
+  /// to \c param_end().
+  virtual param_iterator param_begin() const = 0;
   /// \sa param_begin()
   virtual param_iterator param_end() const = 0;
 
@@ -338,8 +380,6 @@ public:
   // For debugging purposes only
   void dump(raw_ostream &Out) const;
   LLVM_ATTRIBUTE_USED void dump() const;
-
-  static bool classof(const CallEvent *) { return true; }
 };
 
 
@@ -364,9 +404,16 @@ public:
 
   virtual RuntimeDefinition getRuntimeDefinition() const {
     const FunctionDecl *FD = getDecl();
-    // Note that hasBody() will fill FD with the definition FunctionDecl.
-    if (FD && FD->hasBody(FD))
-      return RuntimeDefinition(FD);
+    // Note that the AnalysisDeclContext will have the FunctionDecl with
+    // the definition (if one exists).
+    if (FD) {
+      AnalysisDeclContext *AD =
+        getLocationContext()->getAnalysisDeclContext()->
+        getManager()->getContext(FD);
+      if (AD->getBody())
+        return RuntimeDefinition(AD->getDecl());
+    }
+
     return RuntimeDefinition();
   }
 
@@ -447,7 +494,7 @@ protected:
   BlockCall(const BlockCall &Other) : SimpleCall(Other) {}
   virtual void cloneTo(void *Dest) const { new (Dest) BlockCall(*this); }
 
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
 public:
   /// \brief Returns the region associated with this instance of the block.
@@ -487,7 +534,7 @@ public:
 /// it is written.
 class CXXInstanceCall : public AnyFunctionCall {
 protected:
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
   CXXInstanceCall(const CallExpr *CE, ProgramStateRef St,
                   const LocationContext *LCtx)
@@ -504,13 +551,7 @@ public:
   virtual const Expr *getCXXThisExpr() const { return 0; }
 
   /// \brief Returns the value of the implicit 'this' object.
-  virtual SVal getCXXThisVal() const {
-    const Expr *Base = getCXXThisExpr();
-    // FIXME: This doesn't handle an overloaded ->* operator.
-    if (!Base)
-      return UnknownVal();
-    return getSVal(Base);
-  }
+  virtual SVal getCXXThisVal() const;
 
   virtual const FunctionDecl *getDecl() const;
 
@@ -555,6 +596,8 @@ public:
   }
 
   virtual const Expr *getCXXThisExpr() const;
+  
+  virtual RuntimeDefinition getRuntimeDefinition() const;
 
   virtual Kind getKind() const { return CE_CXXMember; }
 
@@ -610,6 +653,8 @@ class CXXDestructorCall : public CXXInstanceCall {
   friend class CallEventManager;
 
 protected:
+  typedef llvm::PointerIntPair<const MemRegion *, 1, bool> DtorDataTy;
+
   /// Creates an implicit destructor.
   ///
   /// \param DD The destructor that will be called.
@@ -618,10 +663,10 @@ protected:
   /// \param St The path-sensitive state at this point in the program.
   /// \param LCtx The location context at this point in the program.
   CXXDestructorCall(const CXXDestructorDecl *DD, const Stmt *Trigger,
-                    const MemRegion *Target, ProgramStateRef St,
-                    const LocationContext *LCtx)
+                    const MemRegion *Target, bool IsBaseDestructor,
+                    ProgramStateRef St, const LocationContext *LCtx)
     : CXXInstanceCall(DD, St, LCtx) {
-    Data = Target;
+    Data = DtorDataTy(Target, IsBaseDestructor).getOpaqueValue();
     Location = Trigger->getLocEnd();
   }
 
@@ -632,8 +677,15 @@ public:
   virtual SourceRange getSourceRange() const { return Location; }
   virtual unsigned getNumArgs() const { return 0; }
 
+  virtual RuntimeDefinition getRuntimeDefinition() const;
+
   /// \brief Returns the value of the implicit 'this' object.
   virtual SVal getCXXThisVal() const;
+
+  /// Returns true if this is a call to a base class destructor.
+  bool isBaseDestructor() const {
+    return DtorDataTy::getFromOpaqueValue(Data).getInt();
+  }
 
   virtual Kind getKind() const { return CE_CXXDestructor; }
 
@@ -665,7 +717,7 @@ protected:
   CXXConstructorCall(const CXXConstructorCall &Other) : AnyFunctionCall(Other){}
   virtual void cloneTo(void *Dest) const { new (Dest) CXXConstructorCall(*this); }
 
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
 public:
   virtual const CXXConstructExpr *getOriginExpr() const {
@@ -764,7 +816,7 @@ protected:
   ObjCMethodCall(const ObjCMethodCall &Other) : CallEvent(Other) {}
   virtual void cloneTo(void *Dest) const { new (Dest) ObjCMethodCall(*this); }
 
-  virtual void getExtraInvalidatedRegions(RegionList &Regions) const;
+  virtual void getExtraInvalidatedValues(ValueList &Values) const;
 
   /// Check if the selector may have multiple definitions (may have overrides).
   virtual bool canBeOverridenInSubclass(ObjCInterfaceDecl *IDecl,
@@ -888,6 +940,13 @@ class CallEventManager {
     return new (allocate()) T(A1, A2, A3, St, LCtx);
   }
 
+  template <typename T, typename Arg1, typename Arg2, typename Arg3,
+            typename Arg4>
+  T *create(Arg1 A1, Arg2 A2, Arg3 A3, Arg4 A4, ProgramStateRef St,
+            const LocationContext *LCtx) {
+    return new (allocate()) T(A1, A2, A3, A4, St, LCtx);
+  }
+
 public:
   CallEventManager(llvm::BumpPtrAllocator &alloc) : Alloc(alloc) {}
 
@@ -914,9 +973,9 @@ public:
 
   CallEventRef<CXXDestructorCall>
   getCXXDestructorCall(const CXXDestructorDecl *DD, const Stmt *Trigger,
-                       const MemRegion *Target, ProgramStateRef State,
-                       const LocationContext *LCtx) {
-    return create<CXXDestructorCall>(DD, Trigger, Target, State, LCtx);
+                       const MemRegion *Target, bool IsBase,
+                       ProgramStateRef State, const LocationContext *LCtx) {
+    return create<CXXDestructorCall>(DD, Trigger, Target, IsBase, State, LCtx);
   }
 
   CallEventRef<CXXAllocatorCall>
@@ -966,7 +1025,7 @@ namespace llvm {
     typedef const T *SimpleType;
 
     static SimpleType
-    getSimplifiedValue(const clang::ento::CallEventRef<T>& Val) {
+    getSimplifiedValue(clang::ento::CallEventRef<T> Val) {
       return Val.getPtr();
     }
   };

@@ -120,18 +120,14 @@ struct C4 {
 struct S
 {
   void f(); // expected-note 1 {{previous declaration}}
-  void S::f() {} // expected-warning {{extra qualification on member}} expected-error {{class member cannot be redeclared}} expected-note {{previous declaration}} expected-note {{previous definition}}
+  void S::f() {} // expected-error {{extra qualification on member}} expected-error {{class member cannot be redeclared}} expected-note {{previous declaration}} expected-note {{previous definition}}
   void f() {} // expected-error {{class member cannot be redeclared}} expected-error {{redefinition}}
 };
 
 // Don't crash on this bogus code.
 namespace pr6629 {
-  // TODO: most of these errors are spurious
   template<class T1, class T2> struct foo :
-    bogus<foo<T1,T2> > // expected-error {{unknown template name 'bogus'}} \
-                       // BOGUS expected-error {{expected '{' after base class list}} \
-                       // BOGUS expected-error {{expected ';' after struct}} \
-                       // BOGUS expected-error {{expected unqualified-id}}
+    bogus<foo<T1,T2> > // expected-error {{unknown template name 'bogus'}}
   { };
 
   template<> struct foo<unknown,unknown> { // expected-error {{undeclared identifier 'unknown'}}

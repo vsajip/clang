@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -analyze -analyzer-checker=core,debug.ExprInspection -fblocks -verify %s
+// RUN: %clang_cc1 -analyze -analyzer-checker=core,debug.ExprInspection -fblocks -analyzer-config c++-template-inlining=false -DNO_INLINE -verify %s
 
 void clang_analyzer_eval(bool);
 
@@ -39,6 +40,33 @@ inline unsigned array_lengthof(T (&)[N]) {
 
 void testNonTypeTemplateInstantiation() {
   const char *S[] = { "a", "b" };
-  clang_analyzer_eval(array_lengthof(S) == 2); // expected-warning{{TRUE}}
+  clang_analyzer_eval(array_lengthof(S) == 2);
+#ifndef NO_INLINE
+  // expected-warning@-2 {{TRUE}}
+#else
+  // expected-warning@-4 {{UNKNOWN}}
+#endif
 }
 
+namespace rdar13954714 {
+  template <bool VALUE>
+  bool blockInTemplate() {
+    return (^() {
+      return VALUE;
+    })();
+  }
+
+  // force instantiation
+  template bool blockInTemplate<true>();
+
+  template <bool VALUE>
+  void blockWithStatic() {
+    (void)^() {
+      static int x;
+      return ++x;
+    };
+  }
+
+  // force instantiation
+  template void blockWithStatic<true>();
+}

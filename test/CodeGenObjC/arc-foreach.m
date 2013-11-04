@@ -1,5 +1,5 @@
-// RUN: %clang_cc1 -fblocks -fobjc-arc -fobjc-runtime-has-weak -triple x86_64-apple-darwin -O0 -emit-llvm %s -o %t-64.s
-// RUN: FileCheck -check-prefix LP64 --input-file=%t-64.s %s
+// RUN: %clang_cc1 -fblocks -fobjc-arc -fobjc-runtime-has-weak -triple x86_64-apple-darwin -emit-llvm %s -o %t-64.s
+// RUN: FileCheck -check-prefix CHECK-LP64 --input-file=%t-64.s %s
 // rdar://9503326
 // rdar://9606600
 
@@ -22,7 +22,7 @@ void test0(NSArray *array) {
   }
 }
 
-// CHECK-LP64:    define void @test0(
+// CHECK-LP64-LABEL:    define void @test0(
 // CHECK-LP64:      [[ARRAY:%.*]] = alloca [[ARRAY_T:%.*]]*,
 // CHECK-LP64-NEXT: [[X:%.*]] = alloca i8*,
 // CHECK-LP64-NEXT: [[STATE:%.*]] = alloca [[STATE_T:%.*]],
@@ -30,10 +30,10 @@ void test0(NSArray *array) {
 // CHECK-LP64-NEXT: [[BLOCK:%.*]] = alloca [[BLOCK_T:<{.*}>]],
 
 // Initialize 'array'.
-// CHECK-LP64-NEXT: [[T0:%.*]] = bitcast [[ARRAY_T:%.*]]* {{%.*}} to i8*
-// CHECK-LP64-NEXT: [[T1:%.*]] = call i8* @objc_retain(i8* [[T0]])
-// CHECK-LP64-NEXT: [[T2:%.*]] = bitcast i8* [[T1]] to [[ARRAY_T]]*
-// CHECK-LP64-NEXT: store [[ARRAY_T]]* [[T2]], [[ARRAY_T]]** [[ARRAY]], align 8
+// CHECK-LP64-NEXT: store [[ARRAY_T]]* null, [[ARRAY_T]]** [[ARRAY]]
+// CHECK-LP64-NEXT: [[ZERO:%.*]] = bitcast [[ARRAY_T]]** [[ARRAY]] to i8**
+// CHECK-LP64-NEXT: [[ONE:%.*]] = bitcast [[ARRAY_T]]* {{%.*}} to i8*
+// CHECK-LP64-NEXT: call void @objc_storeStrong(i8** [[ZERO]], i8* [[ONE]]) [[NUW:#[0-9]+]]
 
 // Initialize the fast enumaration state.
 // CHECK-LP64-NEXT: [[T0:%.*]] = bitcast [[STATE_T]]* [[STATE]] to i8*
@@ -67,8 +67,7 @@ void test0(NSArray *array) {
 // CHECK-LP64-NEXT: store i8* [[T2]], i8** [[T0]]
 // CHECK-LP64-NEXT: [[T1:%.*]] = bitcast [[BLOCK_T]]* [[BLOCK]] 
 // CHECK-LP64: call void @use_block(
-// CHECK-LP64-NEXT: [[T1:%.*]] = load i8** [[D0]]
-// CHECK-LP64-NEXT: call void @objc_release(i8* [[T1]])
+// CHECK-LP64-NEXT: call void @objc_storeStrong(i8** [[D0]], i8* null)
 
 // CHECK-LP64:      [[T0:%.*]] = load i8** @"\01L_OBJC_SELECTOR_REFERENCES_
 // CHECK-LP64-NEXT: [[T1:%.*]] = bitcast [[ARRAY_T]]* [[SAVED_ARRAY]] to i8*
@@ -79,14 +78,14 @@ void test0(NSArray *array) {
 // CHECK-LP64-NEXT: call void @objc_release(i8* [[T0]])
 
 // Destroy 'array'.
-// CHECK-LP64:      [[T0:%.*]] = load [[ARRAY_T]]** [[ARRAY]]
-// CHECK-LP64-NEXT: [[T1:%.*]] = bitcast [[ARRAY_T]]* [[T0]] to i8*
-// CHECK-LP64-NEXT: call void @objc_release(i8* [[T1]])
+// CHECK-LP64:      [[T0:%.*]] = bitcast [[ARRAY_T]]** [[ARRAY]] to i8**
+// CHECK-LP64-NEXT: call void @objc_storeStrong(i8** [[T0]], i8* null)
 // CHECK-LP64-NEXT: ret void
 
-// CHECK-LP64:    define internal void @__test0_block_invoke
+// CHECK-LP64-LABEL:    define internal void @__test0_block_invoke
 // CHECK-LP64:      [[BLOCK:%.*]] = bitcast i8* {{%.*}} to [[BLOCK_T]]*
-// CHECK-LP64-NEXT: [[T0:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
+// CHECK-LP64-NOT:  ret
+// CHECK-LP64:      [[T0:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
 // CHECK-LP64-NEXT: [[T2:%.*]] = load i8** [[T0]], align 8 
 // CHECK-LP64-NEXT: call void @use(i8* [[T2]])
 
@@ -96,7 +95,7 @@ void test1(NSArray *array) {
   }
 }
 
-// CHECK-LP64:    define void @test1(
+// CHECK-LP64-LABEL:    define void @test1(
 // CHECK-LP64:      alloca [[ARRAY_T:%.*]]*,
 // CHECK-LP64-NEXT: [[X:%.*]] = alloca i8*,
 // CHECK-LP64-NEXT: [[STATE:%.*]] = alloca [[STATE_T:%.*]],
@@ -111,8 +110,9 @@ void test1(NSArray *array) {
 
 // CHECK-LP64:      [[D0:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
 // CHECK-LP64:      [[T0:%.*]] = getelementptr inbounds [[BLOCK_T]]* [[BLOCK]], i32 0, i32 5
-// CHECK-LP64-NEXT: [[T1:%.*]] = call i8* @objc_loadWeak(i8** [[X]])
+// CHECK-LP64-NEXT: [[T1:%.*]] = call i8* @objc_loadWeakRetained(i8** [[X]])
 // CHECK-LP64-NEXT: call i8* @objc_initWeak(i8** [[T0]], i8* [[T1]])
+// CHECK-LP64-NEXT: call void @objc_release(i8* [[T1]]) 
 // CHECK-LP64-NEXT: [[T1:%.*]] = bitcast [[BLOCK_T]]* [[BLOCK]] to
 // CHECK-LP64: call void @use_block
 // CHECK-LP64-NEXT: call void @objc_destroyWeak(i8** [[D0]])
@@ -128,7 +128,7 @@ void test2(Test2 *a) {
   }
 }
 
-// CHECK-LP64:    define void @test2(
+// CHECK-LP64-LABEL:    define void @test2(
 // CHECK-LP64:      [[T0:%.*]] = call [[ARRAY_T]]* bitcast (i8* (i8*, i8*, ...)* @objc_msgSend to [[ARRAY_T]]* (i8*, i8*)*)(
 // CHECK-LP64-NEXT: [[T1:%.*]] = bitcast [[ARRAY_T]]* [[T0]] to i8*
 // CHECK-LP64-NEXT: [[T2:%.*]] = call i8* @objc_retainAutoreleasedReturnValue(i8* [[T1]])
@@ -160,7 +160,7 @@ void test3(NSArray *array) {
     use(x);
   }
 
-  // CHECK-LP64:    define void @test3(
+  // CHECK-LP64-LABEL:    define void @test3(
   // CHECK-LP64:      [[ARRAY:%.*]] = alloca [[ARRAY_T]]*, align 8
   // CHECK-LP64-NEXT: [[X:%.*]] = alloca i8*, align 8
   // CHECK-LP64:      [[T0:%.*]] = load i8** [[X]], align 8
@@ -171,3 +171,5 @@ void test3(NSArray *array) {
   // CHECK-LP64-NEXT: call void @use(i8* [[T0]])
   // CHECK-LP64-NEXT: br label [[L]]
 }
+
+// CHECK: attributes [[NUW]] = { nounwind }

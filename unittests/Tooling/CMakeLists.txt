@@ -1,6 +1,7 @@
 set(LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
   asmparser
+  bitreader
   support
   mc
   )
@@ -13,6 +14,7 @@ add_clang_unittest(ToolingTests
   RefactoringTest.cpp
   RewriterTest.cpp
   RefactoringCallbacksTest.cpp
+  ReplacementsYamlTest.cpp
   )
 
 target_link_libraries(ToolingTests

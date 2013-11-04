@@ -136,37 +136,33 @@ int test_duplicate_brief2(int);
 int test_duplicate_brief3(int);
 
 
-// expected-warning@+5 {{duplicated command '\return'}} expected-note@+1 {{previous command '\return' here}}
 /// \return Aaa
 ///
 /// Bbb
 ///
 /// \return Ccc
-int test_duplicate_returns1(int);
+int test_multiple_returns1(int);
 
-// expected-warning@+5 {{duplicated command '\returns'}} expected-note@+1 {{previous command '\returns' here}}
 /// \returns Aaa
 ///
 /// Bbb
 ///
 /// \returns Ccc
-int test_duplicate_returns2(int);
+int test_multiple_returns2(int);
 
-// expected-warning@+5 {{duplicated command '\result'}} expected-note@+1 {{previous command '\result' here}}
 /// \result Aaa
 ///
 /// Bbb
 ///
 /// \result Ccc
-int test_duplicate_returns3(int);
+int test_multiple_returns3(int);
 
-// expected-warning@+5 {{duplicated command '\return'}} expected-note@+1 {{previous command '\returns' (an alias of '\return') here}}
 /// \returns Aaa
 ///
 /// Bbb
 ///
 /// \return Ccc
-int test_duplicate_returns4(int);
+int test_multiple_returns4(int);
 
 
 // expected-warning@+1 {{'\param' command used in a comment that is not attached to a function declaration}}
@@ -297,6 +293,33 @@ typedef int (* const test_param25)(int aaa, int ccc);
 /// \returns aaa.
 typedef int (C::*test_param26)(int aaa, int ccc);
 
+typedef int (*test_param27)(int aaa);
+
+// expected-warning@+1 {{'\param' command used in a comment that is not attached to a function declaration}}
+/// \param aaa Meow.
+typedef test_param27 test_param28;
+
+// rdar://13066276
+// expected-warning@+1 {{'@param' command used in a comment that is not attached to a function declaration}}
+/// @param aaa Meow.
+typedef unsigned int test_param29;
+
+
+/// \param aaa Aaa
+/// \param ... Vararg
+int test_vararg_param1(int aaa, ...);
+
+/// \param ... Vararg
+int test_vararg_param2(...);
+
+// expected-warning@+1 {{parameter '...' not found in the function declaration}} expected-note@+1 {{did you mean 'aaa'?}}
+/// \param ... Vararg
+int test_vararg_param3(int aaa);
+
+// expected-warning@+1 {{parameter '...' not found in the function declaration}}
+/// \param ... Vararg
+int test_vararg_param4();
+
 
 // expected-warning@+1 {{'\tparam' command used in a comment that is not attached to a template declaration}}
 /// \tparam T Aaa
@@ -370,6 +393,89 @@ using test_tparam14 = test_tparam13<T, int>;
 /// \tparam U Aaa
 template<typename T>
 using test_tparam15 = test_tparam13<T, int>;
+
+// ----
+
+/// \tparam T Aaa
+template<typename T>
+class test_tparam16 { };
+
+typedef test_tparam16<int> test_tparam17;
+typedef test_tparam16<double> test_tparam18;
+
+// ----
+
+template<typename T>
+class test_tparam19;
+
+typedef test_tparam19<int> test_tparam20;
+typedef test_tparam19<double> test_tparam21;
+
+/// \tparam T Aaa
+template<typename T>
+class test_tparam19 { };
+
+// ----
+
+// expected-warning@+1 {{'@tparam' command used in a comment that is not attached to a template declaration}}
+/// @tparam T Aaa
+int test_tparam22;
+
+// ----
+
+
+/// Aaa
+/// \deprecated Bbb
+void test_deprecated_1(int a) __attribute__((deprecated));
+
+// We don't want \deprecated to warn about empty paragraph.  It is fine to use
+// \deprecated by itself without explanations.
+
+/// Aaa
+/// \deprecated
+void test_deprecated_2(int a) __attribute__((deprecated));
+
+/// Aaa
+/// \deprecated
+void test_deprecated_3(int a) __attribute__((availability(macosx,introduced=10.4)));
+
+/// Aaa
+/// \deprecated
+void test_deprecated_4(int a) __attribute__((unavailable));
+
+// expected-warning@+2 {{declaration is marked with '\deprecated' command but does not have a deprecation attribute}} expected-note@+3 {{add a deprecation attribute to the declaration to silence this warning}}
+/// Aaa
+/// \deprecated
+void test_deprecated_5(int a);
+
+// expected-warning@+2 {{declaration is marked with '\deprecated' command but does not have a deprecation attribute}} expected-note@+3 {{add a deprecation attribute to the declaration to silence this warning}}
+/// Aaa
+/// \deprecated
+void test_deprecated_6(int a) {
+}
+
+// expected-warning@+2 {{declaration is marked with '\deprecated' command but does not have a deprecation attribute}}
+/// Aaa
+/// \deprecated
+template<typename T>
+void test_deprecated_7(T aaa);
+
+
+// rdar://12397511
+// expected-note@+2 {{previous command '\headerfile' here}}
+// expected-warning@+2 {{duplicated command '\headerfile'}}
+/// \headerfile ""
+/// \headerfile foo.h
+int test__headerfile_1(int a);
+
+
+/// \invariant aaa
+void test_invariant_1(int a);
+
+// expected-warning@+1 {{empty paragraph passed to '\invariant' command}}
+/// \invariant
+void test_invariant_2(int a);
+
 
 // no-warning
 /// \returns Aaa
@@ -449,6 +555,41 @@ enum test_returns_wrong_decl_8 {
 /// \returns Aaa
 namespace test_returns_wrong_decl_10 { };
 
+// rdar://13066276
+// expected-warning@+1 {{'@returns' command used in a comment that is not attached to a function or method declaration}}
+/// @returns Aaa
+typedef unsigned int test_returns_wrong_decl_11;
+
+// rdar://13094352
+// expected-warning@+1 {{'@function' command should be used in a comment attached to a function declaration}}
+/*!	@function test_function
+*/
+typedef unsigned int Base64Flags;
+unsigned test_function(Base64Flags inFlags);
+
+// expected-warning@+1 {{'@callback' command should be used in a comment attached to a pointer to function declaration}}
+/*! @callback test_callback
+*/
+typedef unsigned int BaseFlags;
+unsigned (*test_callback)(BaseFlags inFlags);
+
+// expected-warning@+1 {{'\endverbatim' command does not terminate a verbatim text block}}
+/// \endverbatim
+int test_verbatim_1();
+
+// expected-warning@+1 {{'\endcode' command does not terminate a verbatim text block}}
+/// \endcode
+int test_verbatim_2();
+
+// FIXME: we give a bad diagnostic here because we throw away non-documentation
+// comments early.
+//
+// expected-warning@+3 {{'\endcode' command does not terminate a verbatim text block}}
+/// \code
+//  foo
+/// \endcode
+int test_verbatim_3();
+
 
 // expected-warning@+1 {{empty paragraph passed to '\brief' command}}
 int test1; ///< \brief\author Aaa
@@ -461,6 +602,25 @@ int test2, ///< \brief\author Aaa
 // expected-warning@+1 {{empty paragraph passed to '\brief' command}}
 int test4; ///< \brief
            ///< \author Aaa
+
+
+class TestRelates {};
+
+/// \relates TestRelates
+/// \brief Aaa
+void test_relates_1();
+
+/// \related TestRelates
+/// \brief Aaa
+void test_relates_2();
+
+/// \relatesalso TestRelates
+/// \brief Aaa
+void test_relates_3();
+
+/// \relatedalso TestRelates
+/// \brief Aaa
+void test_relates_4();
 
 
 // Check that we attach the comment to the declaration during parsing in the
@@ -761,3 +921,107 @@ inline void test_nocrash6()
 */
 typedef const struct test_nocrash7 * test_nocrash8;
 
+// We used to crash on this.
+
+// expected-warning@+1 {{unknown command tag name}}
+/// aaa \unknown aaa \unknown aaa
+int test_nocrash9;
+
+// We used to crash on this.  PR15068
+
+// expected-warning@+2 {{empty paragraph passed to '@param' command}}
+// expected-warning@+2 {{empty paragraph passed to '@param' command}}
+///@param x
+///@param y
+int test_nocrash10(int x, int y);
+
+// expected-warning@+2 {{empty paragraph passed to '@param' command}} expected-warning@+2 {{parameter 'x' not found in the function declaration}}
+// expected-warning@+2 {{empty paragraph passed to '@param' command}} expected-warning@+2 {{parameter 'y' not found in the function declaration}}
+///@param x
+///@param y
+int test_nocrash11();
+
+// expected-warning@+3 {{empty paragraph passed to '@param' command}} expected-warning@+3 {{parameter 'x' not found in the function declaration}}
+// expected-warning@+3 {{empty paragraph passed to '@param' command}} expected-warning@+3 {{parameter 'y' not found in the function declaration}}
+/**
+@param x
+@param y
+**/
+int test_nocrash12();
+
+// expected-warning@+2 {{empty paragraph passed to '@param' command}}
+// expected-warning@+1 {{empty paragraph passed to '@param' command}}
+///@param x@param y
+int test_nocrash13(int x, int y);
+
+// rdar://12379114
+// expected-warning@+2 {{'@union' command should not be used in a comment attached to a non-union declaration}}
+/*!
+   @union U This is new 
+*/
+struct U { int iS; };
+
+/*!
+  @union U1
+*/
+union U1 {int i; };
+
+// expected-warning@+2 {{'@struct' command should not be used in a comment attached to a non-struct declaration}}
+/*!
+ @struct S2
+*/
+union S2 {};
+
+/*!
+  @class C1
+*/
+class C1;
+
+/*!
+  @struct S3;
+*/
+class S3;
+
+// rdar://14124702
+//----------------------------------------------------------------------
+/// @class Predicate Predicate.h "lldb/Host/Predicate.h"
+/// @brief A C++ wrapper class for providing threaded access to a value
+/// of type T.
+///
+/// A templatized class.
+/// specified values.
+//----------------------------------------------------------------------
+template <class T, class T1>
+class Predicate
+{
+};
+
+//----------------------------------------------------------------------
+/// @class Predicate<int, char> Predicate.h "lldb/Host/Predicate.h"
+/// @brief A C++ wrapper class for providing threaded access to a value
+/// of type T.
+///
+/// A template specilization class.
+//----------------------------------------------------------------------
+template<> class Predicate<int, char>
+{
+};
+
+//----------------------------------------------------------------------
+/// @class Predicate<T, int> Predicate.h "lldb/Host/Predicate.h"
+/// @brief A C++ wrapper class for providing threaded access to a value
+/// of type T.
+///
+/// A partial specialization template class.
+//----------------------------------------------------------------------
+template<class T> class Predicate<T, int>
+{
+};
+
+/*!     @function test_function
+*/
+template <class T> T test_function (T arg);
+
+/*!     @function test_function<int>
+*/
+template <> int test_function<int> (int arg);

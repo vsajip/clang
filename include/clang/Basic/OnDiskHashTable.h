@@ -14,11 +14,12 @@
 #ifndef LLVM_CLANG_BASIC_ON_DISK_HASH_TABLE_H
 #define LLVM_CLANG_BASIC_ON_DISK_HASH_TABLE_H
 
+#include "clang/Basic/LLVM.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/DataTypes.h"
+#include "llvm/Support/Host.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
-#include "llvm/Support/Host.h"
 #include <cassert>
 #include <cstdlib>
 
@@ -101,8 +102,8 @@ inline uint64_t ReadUnalignedLE64(const unsigned char *&Data) {
 inline uint32_t ReadLE32(const unsigned char *&Data) {
   // Hosts that directly support little-endian 32-bit loads can just
   // use them.  Big-endian hosts need a bswap.
-  uint32_t V = *((uint32_t*)Data);
-  if (llvm::sys::isBigEndianHost())
+  uint32_t V = *((const uint32_t*)Data);
+  if (llvm::sys::IsBigEndianHost)
     V = llvm::ByteSwap_32(V);
   Data += 4;
   return V;

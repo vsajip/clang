@@ -29,3 +29,20 @@ typedef struct {
 void f(StructType *buf) {
   buf->fun = 0;
 }
+
+// rdar://11743706
+static void bar(hid_t, char); // expected-error {{expected identifier}}
+
+static void bar(hid_t p, char); // expected-error {{unknown type name 'hid_t'}}
+
+void foo() {
+  (void)bar;
+}
+
+void test2();
+void test2(undef); // expected-error {{a parameter list without types is only allowed in a function definition}}
+void test2() { }
+
+void test3();
+void test3; // expected-error {{incomplete type}}
+void test3() { }

@@ -3,17 +3,17 @@
 // rdar://8843524
 
 struct A {
-    id x; // expected-error {{ARC forbids Objective-C objects in structs or unions}}
+    id x; // expected-error {{ARC forbids Objective-C objects in struct}}
 };
 
 union u {
-    id u; // expected-error {{ARC forbids Objective-C objects in structs or unions}}
+    id u; // expected-error {{ARC forbids Objective-C objects in union}}
 };
 
 @interface I {
    struct A a; 
    struct B {
-    id y[10][20]; // expected-error {{ARC forbids Objective-C objects in structs or unions}}
+    id y[10][20]; // expected-error {{ARC forbids Objective-C objects in struct}}
     id z;
    } b;
 
@@ -23,7 +23,7 @@ union u {
 
 // rdar://10260525
 struct r10260525 {
-  id (^block) (); // expected-error {{ARC forbids blocks in structs or unions}}
+  id (^block) (); // expected-error {{ARC forbids blocks in struct}}
 };
 
 struct S { 
@@ -99,3 +99,22 @@ void test7(void) {
   I *y;
   J **py = &y; // expected-error {{pointer to non-const type 'J *' with no explicit ownership}} expected-warning {{incompatible pointer types initializing}}
 }
+
+void func(void) __attribute__((objc_ownership(none)));  // expected-warning {{'objc_ownership' only applies to Objective-C object or block pointer types; type here is 'void (void)'}}
+struct __attribute__((objc_ownership(none))) S2 {}; // expected-error {{'objc_ownership' attribute only applies to variables}}
+@interface I2
+    @property __attribute__((objc_ownership(frob))) id i; // expected-warning {{'objc_ownership' attribute argument not supported: 'frob'}}
+@end
+
+// rdar://15304886
+@interface NSObject @end
+
+@interface ControllerClass : NSObject @end
+
+@interface SomeClassOwnedByController
+@property (readonly) ControllerClass *controller; // expected-note {{property declared here}}
+@end
+
+@interface SomeClassOwnedByController ()
+@property (readwrite, weak) ControllerClass *controller; // expected-warning {{primary property declaration is implicitly strong while redeclaration in class extension is weak}}
+@end

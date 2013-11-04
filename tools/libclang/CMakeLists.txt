@@ -2,6 +2,7 @@ set(LLVM_LINK_COMPONENTS
   ${LLVM_TARGETS_TO_BUILD}
   asmparser
   support
+  bitreader
   mc
   )
 
@@ -38,10 +39,12 @@ set(SOURCES
   Indexing.cpp
   IndexingContext.cpp
   IndexingContext.h
+  SimpleFormatContext.h
   ../../include/clang-c/Index.h
   )
 
 set(LIBRARIES
+  clangIndex
   clangARCMigrate
   clangRewriteCore
   clangRewriteFrontend
@@ -54,6 +57,7 @@ set(LIBRARIES
   clangLex
   clangTooling
   clangBasic
+  clangFormat
   )
 
 set(GENERATED_HEADERS
@@ -71,7 +75,7 @@ if( LLVM_ENABLE_PIC )
   set(SHARED_LIBRARY TRUE)
   add_clang_library(libclang ${SOURCES})
   target_link_libraries(libclang ${LIBRARIES})
-  add_dependencies(libclang ${GENERATED_HEADERS})
+  add_dependencies(libclang ${GENERATED_HEADERS} clang-headers)
 
   if(WIN32)
     set_target_properties(libclang
@@ -102,10 +106,13 @@ else()
   set(LIBCLANG_STATIC_TARGET_NAME libclang)
 endif()
 
-if( NOT BUILD_SHARED_LIBS AND NOT WIN32 )
+option(LIBCLANG_BUILD_STATIC
+  "Build libclang as a static library (in addition to a shared one)" OFF)
+
+if( (NOT LLVM_ENABLE_PIC OR LIBCLANG_BUILD_STATIC) AND NOT WIN32 )
   add_clang_library(${LIBCLANG_STATIC_TARGET_NAME} STATIC ${SOURCES})
   target_link_libraries(${LIBCLANG_STATIC_TARGET_NAME} ${LIBRARIES})
-  add_dependencies(${LIBCLANG_STATIC_TARGET_NAME} ${GENERATED_HEADERS})
+  add_dependencies(${LIBCLANG_STATIC_TARGET_NAME} ${GENERATED_HEADERS} clang-headers)
 
   set_target_properties(${LIBCLANG_STATIC_TARGET_NAME}
     PROPERTIES

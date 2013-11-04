@@ -124,7 +124,7 @@ struct A {
   A();
 };
 
-// CHECK: define void @_ZN9ValueInit1AC2Ev(%"struct.ValueInit::A"* %this) unnamed_addr
+// CHECK-LABEL: define void @_ZN9ValueInit1AC2Ev(%"struct.ValueInit::A"* %this) unnamed_addr
 // CHECK: store i64 -1, i64*
 // CHECK: ret void
 A::A() : a() {}
@@ -151,13 +151,13 @@ struct A {
   A() : a() {}
 };
 
-// CHECK-O3: define zeroext i1 @_ZN6PR71395checkEv() nounwind readnone
+// CHECK-O3: define zeroext i1 @_ZN6PR71395checkEv() [[NUW:#[0-9]+]]
 bool check() {
   // CHECK-O3: ret i1 true
   return A().a.data == 0;
 }
 
-// CHECK-O3: define zeroext i1 @_ZN6PR71396check2Ev() nounwind readnone
+// CHECK-O3: define zeroext i1 @_ZN6PR71396check2Ev() [[NUW]]
 bool check2() {
   // CHECK-O3: ret i1 true
   return ptr_to_member_type() == 0;
@@ -202,7 +202,7 @@ namespace BoolPtrToMember {
     bool member;
   };
 
-  // CHECK: define i8* @_ZN15BoolPtrToMember1fERNS_1XEMS0_b
+  // CHECK-LABEL: define i8* @_ZN15BoolPtrToMember1fERNS_1XEMS0_b
   bool &f(X &x, bool X::*member) {
     // CHECK: {{bitcast.* to i8\*}}
     // CHECK-NEXT: getelementptr inbounds i8*
@@ -249,8 +249,10 @@ namespace PR13097 {
   };
   A f();
   X g() { return f().*&A::x; }
-  // CHECK: define void @_ZN7PR130971gEv
+  // CHECK-LABEL: define void @_ZN7PR130971gEv
   // CHECK: call void @_ZN7PR130971fEv
   // CHECK-NOT: memcpy
   // CHECK: call void @_ZN7PR130971XC1ERKS0_
 }
+
+// CHECK-O3: attributes [[NUW]] = { nounwind readnone{{.*}} }

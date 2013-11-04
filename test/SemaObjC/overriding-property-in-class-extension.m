@@ -7,7 +7,7 @@
 
 @interface MyClass  : NSObject
 
-@property (nonatomic, copy, readonly) NSString* name;
+@property (nonatomic, copy, readonly) NSString* name; // expected-warning {{property attributes 'readonly' and 'copy' are mutually exclusive}}
 
 @end
 

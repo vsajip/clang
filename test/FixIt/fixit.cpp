@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -pedantic -Wall -Wno-comment -verify -fcxx-exceptions -x c++ %s
+// RUN: not %clang_cc1 -fsyntax-only -fdiagnostics-parseable-fixits -x c++ %s 2>&1 | FileCheck %s
 // RUN: cp %s %t
 // RUN: not %clang_cc1 -pedantic -Wall -Wno-comment -fcxx-exceptions -fixit -x c++ %t
 // RUN: %clang_cc1 -fsyntax-only -pedantic -Wall -Werror -Wno-comment -fcxx-exceptions -x c++ %t
@@ -64,7 +65,7 @@ namespace rdar7796492 {
 
 // extra qualification on member
 class C {
-  int C::foo(); // expected-warning {{extra qualification}}
+  int C::foo(); // expected-error {{extra qualification}}
 };
 
 namespace rdar8488464 {
@@ -290,5 +291,50 @@ namespace greatergreater {
 
     // FIXME: The fix-its here overlap.
     //(void)(&t<S<int>>==p);
+  }
+}
+
+class foo {
+  static void test() {
+    (void)&i; // expected-error{{must explicitly qualify name of member function when taking its address}}
+  }
+  int i();
+};
+
+namespace dtor_fixit {
+  class foo {
+    ~bar() { }  // expected-error {{expected the class name after '~' to name a destructor}}
+    // CHECK: fix-it:"{{.*}}":{[[@LINE-1]]:6-[[@LINE-1]]:9}:"foo"
+  };
+}
+
+namespace PR5066 {
+  template<typename T> struct X {};
+  X<int *p> x; // expected-error {{type-id cannot have a name}}
+}
+
+namespace PR5898 {
+  class A {
+  public:
+    const char *str();
+  };
+  const char* foo(A &x)
+  {
+    return x.str.();  // expected-error {{unexpected '.' in function call; perhaps remove the '.'?}}
+  }
+  bool bar(A x, const char *y) {
+    return foo->(x) == y;  // expected-error {{unexpected '->' in function call; perhaps remove the '->'?}}
+  }
+}
+
+namespace PR15045 {
+  class Cl0 {
+  public:
+    int a;
+  };
+
+  int f() {
+    Cl0 c;
+    return c->a;  // expected-error {{member reference type 'PR15045::Cl0' is not a pointer; maybe you meant to use '.'?}}
   }
 }

@@ -117,7 +117,7 @@ void test1(A *a, BOOL b, struct UnsafeS *unsafeS) {
 }
 
 struct S {
-  A* a; // expected-error {{ARC forbids Objective-C objects in structs or unions}}
+  A* a; // expected-error {{ARC forbids Objective-C objects in struct}}
 };
 
 @interface B
@@ -178,13 +178,13 @@ void test12(id collection) {
 }
 
 void test6(unsigned cond) {
-  // FIXME: Fix this automatically ?
   switch (cond) {
   case 0:
     ;
     id x; // expected-note {{jump bypasses initialization of retaining variable}}
 
   case 1: // expected-error {{switch case is in protected scope}}
+    x = 0;
     break;
   }
 }
@@ -293,10 +293,10 @@ id test9(Test9 *v) {
 void rdar9491791(int p) {
   switch (p) {
   case 3:;
-    NSObject *o = [[NSObject alloc] init]; // expected-note {{jump bypasses initialization of retaining variable}}
+    NSObject *o = [[NSObject alloc] init];
     [o release];
     break;
-  default: // expected-error {{switch case is in protected scope}}
+  default:
     break;
   }
 }
@@ -333,7 +333,9 @@ void rdar9504750(id p) {
 }
 @end
 
-@interface Test10 : NSObject
+@interface Test10 : NSObject {
+  CFStringRef cfstr;
+}
 @property (retain) id prop;
 -(void)foo;
 @end
@@ -342,3 +344,13 @@ void test(Test10 *x) {
   x.prop = ^{ [x foo]; }; // expected-warning {{likely to lead to a retain cycle}} \
                           // expected-note {{retained by the captured object}}
 }
+
+@implementation Test10
+-(void)foo {
+  ^{
+    NSString *str = (NSString *)cfstr; // expected-error {{cast of C pointer type 'CFStringRef' (aka 'const struct __CFString *') to Objective-C pointer type 'NSString *' requires a bridged cast}} \
+    // expected-note {{use __bridge to convert directly (no change in ownership)}} \
+    // expected-note {{use CFBridgingRelease call to transfer ownership of a +1 'CFStringRef' (aka 'const struct __CFString *') into ARC}}
+  };
+}
+@end

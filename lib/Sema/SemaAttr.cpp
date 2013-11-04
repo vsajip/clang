@@ -13,11 +13,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Sema/SemaInternal.h"
-#include "clang/Sema/Lookup.h"
+#include "clang/AST/ASTConsumer.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/Expr.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Lex/Preprocessor.h"
+#include "clang/Sema/Lookup.h"
 using namespace clang;
 
 //===----------------------------------------------------------------------===//
@@ -136,22 +137,11 @@ void Sema::AddMsStructLayoutForRecord(RecordDecl *RD) {
 }
 
 void Sema::ActOnPragmaOptionsAlign(PragmaOptionsAlignKind Kind,
-                                   SourceLocation PragmaLoc,
-                                   SourceLocation KindLoc) {
+                                   SourceLocation PragmaLoc) {
   if (PackContext == 0)
     PackContext = new PragmaPackStack();
 
   PragmaPackStack *Context = static_cast<PragmaPackStack*>(PackContext);
-
-  // Reset just pops the top of the stack, or resets the current alignment to
-  // default.
-  if (Kind == Sema::POAK_Reset) {
-    if (!Context->pop(0, /*IsReset=*/true)) {
-      Diag(PragmaLoc, diag::warn_pragma_options_align_reset_failed)
-        << "stack empty";
-    }
-    return;
-  }
 
   switch (Kind) {
     // For all targets we support native and natural are the same.
@@ -181,9 +171,13 @@ void Sema::ActOnPragmaOptionsAlign(PragmaOptionsAlignKind Kind,
     Context->setAlignment(PackStackEntry::kMac68kAlignmentSentinel);
     break;
 
-  default:
-    Diag(PragmaLoc, diag::warn_pragma_options_align_unsupported_option)
-      << KindLoc;
+  case POAK_Reset:
+    // Reset just pops the top of the stack, or resets the current alignment to
+    // default.
+    if (!Context->pop(0, /*IsReset=*/true)) {
+      Diag(PragmaLoc, diag::warn_pragma_options_align_reset_failed)
+        << "stack empty";
+    }
     break;
   }
 }
@@ -270,6 +264,30 @@ void Sema::ActOnPragmaMSStruct(PragmaMSStructKind Kind) {
   MSStructPragmaOn = (Kind == PMSST_ON);
 }
 
+void Sema::ActOnPragmaMSComment(PragmaMSCommentKind Kind, StringRef Arg) {
+  // FIXME: Serialize this.
+  switch (Kind) {
+  case PCK_Unknown:
+    llvm_unreachable("unexpected pragma comment kind");
+  case PCK_Linker:
+    Consumer.HandleLinkerOptionPragma(Arg);
+    return;
+  case PCK_Lib:
+    Consumer.HandleDependentLibrary(Arg);
+    return;
+  case PCK_Compiler:
+  case PCK_ExeStr:
+  case PCK_User:
+    return;  // We ignore all of these.
+  }
+  llvm_unreachable("invalid pragma comment kind");
+}
+
+void Sema::ActOnPragmaDetectMismatch(StringRef Name, StringRef Value) {
+  // FIXME: Serialize this.
+  Consumer.HandleDetectMismatch(Name, Value);
+}
+
 void Sema::ActOnPragmaUnused(const Token &IdTok, Scope *curScope,
                              SourceLocation PragmaLoc) {
 
@@ -316,7 +334,8 @@ void Sema::AddPushedVisibilityAttribute(Decl *D) {
   if (!VisContext)
     return;
 
-  if (isa<NamedDecl>(D) && cast<NamedDecl>(D)->getExplicitVisibility())
+  NamedDecl *ND = dyn_cast<NamedDecl>(D);
+  if (ND && ND->getExplicitVisibility(NamedDecl::VisibilityForValue))
     return;
 
   VisStack *Stack = static_cast<VisStack*>(VisContext);
@@ -349,21 +368,12 @@ void Sema::ActOnPragmaVisibility(const IdentifierInfo* VisType,
                                  SourceLocation PragmaLoc) {
   if (VisType) {
     // Compute visibility to use.
-    VisibilityAttr::VisibilityType type;
-    if (VisType->isStr("default"))
-      type = VisibilityAttr::Default;
-    else if (VisType->isStr("hidden"))
-      type = VisibilityAttr::Hidden;
-    else if (VisType->isStr("internal"))
-      type = VisibilityAttr::Hidden; // FIXME
-    else if (VisType->isStr("protected"))
-      type = VisibilityAttr::Protected;
-    else {
-      Diag(PragmaLoc, diag::warn_attribute_unknown_visibility) <<
-        VisType->getName();
+    VisibilityAttr::VisibilityType T;
+    if (!VisibilityAttr::ConvertStrToVisibilityType(VisType->getName(), T)) {
+      Diag(PragmaLoc, diag::warn_attribute_unknown_visibility) << VisType;
       return;
     }
-    PushPragmaVisibility(*this, type, PragmaLoc);
+    PushPragmaVisibility(*this, T, PragmaLoc);
   } else {
     PopPragmaVisibility(false, PragmaLoc);
   }

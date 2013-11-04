@@ -1,5 +1,8 @@
 // RUN: %clang_cc1 -fsyntax-only -pedantic -verify %s
 
+// PR13819
+// REQUIRES: LP64
+
 // [dcl.ambig.res]p1:
 struct S { 
   S(int); 
@@ -41,9 +44,7 @@ S4<int(1)> y; // expected-error{{must be a type}}
 void foo5() 
 { 
   (void)sizeof(int(1)); //expression 
-  // FIXME: should we make this an error rather than a warning? 
-  // (It affects SFINAE)
-  (void)sizeof(int()); // expected-warning{{function type}}
+  (void)sizeof(int()); // expected-error{{function type}}
 }
 
 // [dcl.ambig.res]p6:

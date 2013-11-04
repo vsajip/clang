@@ -86,6 +86,7 @@ int test_multi_declaration(void) {
   id var_ext;
 }
 @property (assign) id pro_ext;
+-(int)methodWithFn:(void (*)(int *p))fn;
 @end
 
 // RUN: c-index-test -test-load-source-usrs all -target x86_64-apple-macosx10.7 %s | FileCheck %s
@@ -117,7 +118,7 @@ int test_multi_declaration(void) {
 // CHECK: usrs.m c:objc(cs)Foo Extent=[34:1 - 45:2]
 // CHECK: usrs.m c:objc(cs)Foo(im)godzilla Extent=[35:1 - 39:2]
 // CHECK: usrs.m c:usrs.m@402objc(cs)Foo(im)godzilla@a Extent=[36:3 - 36:19]
-// CHECK: usrs.m c:objc(cs)Foo(im)godzilla@z Extent=[37:3 - 37:15]
+// CHECK: usrs.m c:@z Extent=[37:3 - 37:15]
 // CHECK: usrs.m c:objc(cs)Foo(cm)kingkong Extent=[40:1 - 43:2]
 // CHECK: usrs.m c:usrs.m@470objc(cs)Foo(cm)kingkong@local_var Extent=[41:3 - 41:16]
 // CHECK: usrs.m c:objc(cs)Foo(py)d1 Extent=[44:1 - 44:15]
@@ -146,7 +147,7 @@ int test_multi_declaration(void) {
 // CHECK: usrs.m c:objc(pl)P1 Extent=[79:1 - 81:5]
 // CHECK: usrs.m c:objc(pl)P1(im)method Extent=[80:1 - 80:16]
 // CHECK: usrs.m c:objc(cs)CWithExt2 Extent=[83:1 - 84:5]
-// CHECK: usrs.m c:objc(ext)CWithExt2@usrs.m@1111 Extent=[85:1 - 89:5]
+// CHECK: usrs.m c:objc(ext)CWithExt2@usrs.m@1111 Extent=[85:1 - 90:5]
 // CHECK: usrs.m c:objc(cs)CWithExt2@var_ext Extent=[86:3 - 86:13]
 // CHECK: usrs.m c:objc(cs)CWithExt2(py)pro_ext Extent=[88:1 - 88:30]
 // CHECK: usrs.m c:objc(cs)CWithExt2(im)pro_ext Extent=[88:23 - 88:30]
@@ -279,4 +280,6 @@ int test_multi_declaration(void) {
 // CHECK-source: usrs.m:76:10: IntegerLiteral= Extent=[76:10 - 76:11]
 // CHECK-source: usrs.m:79:11: ObjCProtocolDecl=P1:79:11 (Definition) Extent=[79:1 - 81:5]
 // CHECK-source: usrs.m:80:9: ObjCInstanceMethodDecl=method:80:9 Extent=[80:1 - 80:16]
-
+// CHECK-source: usrs.m:89:7: ObjCInstanceMethodDecl=methodWithFn::89:7 Extent=[89:1 - 89:41]
+// CHECK-source: usrs.m:89:38: ParmDecl=fn:89:38 (Definition) Extent=[89:21 - 89:40]
+// CHECK-source: usrs.m:89:35: ParmDecl=p:89:35 (Definition) Extent=[89:30 - 89:36]

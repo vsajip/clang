@@ -7,7 +7,7 @@ struct A {};
 typedef struct A *MPI_Datatype;
 
 int wrong1(void *buf, MPI_Datatype datatype)
-    __attribute__(( pointer_with_type_tag )); // expected-error {{attribute requires parameter 1 to be an identifier}}
+    __attribute__(( pointer_with_type_tag )); // expected-error {{'pointer_with_type_tag' attribute requires parameter 1 to be an identifier}}
 
 int wrong2(void *buf, MPI_Datatype datatype)
     __attribute__(( pointer_with_type_tag(mpi,0,7) )); // expected-error {{attribute parameter 2 is out of bounds}}
@@ -39,7 +39,7 @@ int wrong10(double buf, MPI_Datatype type)
 
 
 extern struct A datatype_wrong1
-    __attribute__(( type_tag_for_datatype )); // expected-error {{attribute requires parameter 1 to be an identifier}}
+    __attribute__(( type_tag_for_datatype )); // expected-error {{'type_tag_for_datatype' attribute requires parameter 1 to be an identifier}}
 
 extern struct A datatype_wrong2
     __attribute__(( type_tag_for_datatype(mpi,1,2) )); // expected-error {{expected a type}}
@@ -78,6 +78,14 @@ void test_tag_mismatch(int *ptr)
   C_func(ptr, D_tag); // expected-warning {{this type tag was not designed to be used with this function}}
   C_func(ptr, 10); // no-warning
   C_func(ptr, 20); // should warn, but may cause false positives
+}
+
+void test_null_pointer()
+{
+  C_func(0, C_tag); // no-warning
+  C_func((void *) 0, C_tag); // no-warning
+  C_func((int *) 0, C_tag); // no-warning
+  C_func((long *) 0, C_tag); // expected-warning {{argument type 'long *' doesn't match specified 'c' type tag that requires 'int *'}}
 }
 
 // Check that we look through typedefs in the special case of allowing 'char'

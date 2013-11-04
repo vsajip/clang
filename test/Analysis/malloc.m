@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -analyze -analyzer-checker=core,unix.Malloc -analyzer-store=region -verify -Wno-objc-root-class -fblocks %s
-#include "system-header-simulator-objc.h"
+#include "Inputs/system-header-simulator-objc.h"
 
 @class NSString;
 typedef __typeof(sizeof(int)) size_t;
@@ -35,3 +35,18 @@ void rdar10579586(char x);
 }
 @end
 
+@interface MyArray : NSObject {
+  id * objects;
+}
+@end
+
+void _ArrayCreate() {
+  MyArray *array = (MyArray *)malloc(12);
+  array = [array init];
+  free(array); // no-warning
+}
+
+void testNSDataTruePositiveLeak() {
+  char *b = (char *)malloc(12);
+  NSData *d = [[NSData alloc] initWithBytes: b length: 12]; // expected-warning {{Potential leak of memory pointed to by 'b'}}
+}

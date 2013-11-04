@@ -6,11 +6,13 @@ set(files
   bmiintrin.h
   bmi2intrin.h
   emmintrin.h
+  f16cintrin.h
   float.h
   fma4intrin.h
   fmaintrin.h
   immintrin.h
   iso646.h
+  Intrin.h
   limits.h
   lzcntintrin.h
   mm3dnow.h
@@ -19,16 +21,24 @@ set(files
   nmmintrin.h
   pmmintrin.h
   popcntintrin.h
+  prfchwintrin.h
+  rdseedintrin.h
+  rtmintrin.h
+  shaintrin.h
   smmintrin.h
   stdalign.h
   stdarg.h
   stdbool.h
   stddef.h
   stdint.h
+  stdnoreturn.h
+  tbmintrin.h
   tgmath.h
   tmmintrin.h
   varargs.h
   wmmintrin.h
+  __wmmintrin_aes.h
+  __wmmintrin_pclmul.h
   x86intrin.h
   xmmintrin.h
   xopintrin.h
@@ -37,13 +47,13 @@ set(files
   module.map
   )
 
-set(output_dir ${LLVM_BINARY_DIR}/lib/clang/${CLANG_VERSION}/include)
+set(output_dir ${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/clang/${CLANG_VERSION}/include)
 
 # If we are in an IDE that has a configuration directory, we need to
 # create a second copy of the headers so that 'clang' can find them if
 # it's run from the build directory.
 if(MSVC_IDE OR XCODE)
-   set(other_output_dir ${LLVM_BINARY_DIR}/bin/lib/clang/${CLANG_VERSION}/include)
+   set(other_output_dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/clang/${CLANG_VERSION}/include)
 endif()
 
 # Generate arm_neon.h
@@ -87,6 +97,14 @@ endif ()
 
 add_custom_target(clang-headers ALL DEPENDS ${out_files})
 set_target_properties(clang-headers PROPERTIES FOLDER "Misc")
+
+if (other_output_dir)
+  if(UNIX)
+    add_custom_command(TARGET clang-headers POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR}"
+    COMMAND ${CMAKE_COMMAND} -E create_symlink "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/lib/clang" "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/${CMAKE_CFG_INTDIR}/clang")
+  endif()
+endif ()
 
 install(FILES ${files} ${output_dir}/arm_neon.h
   PERMISSIONS OWNER_READ OWNER_WRITE GROUP_READ WORLD_READ

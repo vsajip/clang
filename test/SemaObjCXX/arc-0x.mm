@@ -80,4 +80,24 @@ void testAutoIdTemplate(id obj) {
   autoTemplateFunction<id, 2>(obj, obj, [Array new]); // no-warning
 }
 
+// rdar://12229679
+@interface NSObject @end
+typedef __builtin_va_list va_list;
+@interface MyClass : NSObject
+@end
 
+@implementation MyClass
++ (void)fooMethod:(id)firstArg, ... {
+    va_list args;
+
+    __builtin_va_arg(args, id);
+}
+@end
+
+namespace rdar12078752 {
+  void f() {
+    NSObject* o =0;
+    __autoreleasing decltype(o) o2 = o;
+    __autoreleasing auto o3 = o;
+  }
+}

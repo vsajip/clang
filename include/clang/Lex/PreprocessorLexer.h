@@ -69,8 +69,8 @@ protected:
   /// we are currently in.
   SmallVector<PPConditionalInfo, 4> ConditionalStack;
 
-  PreprocessorLexer(const PreprocessorLexer&);          // DO NOT IMPLEMENT
-  void operator=(const PreprocessorLexer&); // DO NOT IMPLEMENT
+  PreprocessorLexer(const PreprocessorLexer &) LLVM_DELETED_FUNCTION;
+  void operator=(const PreprocessorLexer &) LLVM_DELETED_FUNCTION;
   friend class Preprocessor;
 
   PreprocessorLexer(Preprocessor *pp, FileID fid);
@@ -111,9 +111,9 @@ protected:
   /// stack, returning information about it.  If the conditional stack is empty,
   /// this returns true and does not fill in the arguments.
   bool popConditionalLevel(PPConditionalInfo &CI) {
-    if (ConditionalStack.empty()) return true;
-    CI = ConditionalStack.back();
-    ConditionalStack.pop_back();
+    if (ConditionalStack.empty())
+      return true;
+    CI = ConditionalStack.pop_back_val();
     return false;
   }
 

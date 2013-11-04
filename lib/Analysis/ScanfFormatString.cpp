@@ -14,6 +14,7 @@
 
 #include "clang/Analysis/Analyses/FormatString.h"
 #include "FormatStringParsing.h"
+#include "clang/Basic/TargetInfo.h"
 
 using clang::analyze_format_string::ArgType;
 using clang::analyze_format_string::FormatStringHandler;
@@ -67,7 +68,8 @@ static ScanfSpecifierResult ParseScanfSpecifier(FormatStringHandler &H,
                                                 const char *&Beg,
                                                 const char *E,
                                                 unsigned &argIndex,
-                                                const LangOptions &LO) {
+                                                const LangOptions &LO,
+                                                const TargetInfo &Target) {
   
   using namespace clang::analyze_scanf;
   const char *I = Beg;
@@ -172,6 +174,20 @@ static ScanfSpecifierResult ParseScanfSpecifier(FormatStringHandler &H,
     case 'o': k = ConversionSpecifier::oArg; break;
     case 's': k = ConversionSpecifier::sArg; break;
     case 'p': k = ConversionSpecifier::pArg; break;
+    // Apple extensions
+      // Apple-specific
+    case 'D':
+      if (Target.getTriple().isOSDarwin())
+        k = ConversionSpecifier::DArg;
+      break;
+    case 'O':
+      if (Target.getTriple().isOSDarwin())
+        k = ConversionSpecifier::OArg;
+      break;
+    case 'U':
+      if (Target.getTriple().isOSDarwin())
+        k = ConversionSpecifier::UArg;
+      break;
   }
   ScanfConversionSpecifier CS(conversionPosition, k);
   if (k == ScanfConversionSpecifier::ScanListArg) {
@@ -202,6 +218,7 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
   switch(CS.getKind()) {
     // Signed int.
     case ConversionSpecifier::dArg:
+    case ConversionSpecifier::DArg:
     case ConversionSpecifier::iArg:
       switch (LM.getKind()) {
         case LengthModifier::None:
@@ -215,6 +232,8 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
         case LengthModifier::AsLongLong:
         case LengthModifier::AsQuad:
           return ArgType::PtrTo(Ctx.LongLongTy);
+        case LengthModifier::AsInt64:
+          return ArgType::PtrTo(ArgType(Ctx.LongLongTy, "__int64"));
         case LengthModifier::AsIntMax:
           return ArgType::PtrTo(ArgType(Ctx.getIntMaxType(), "intmax_t"));
         case LengthModifier::AsSizeT:
@@ -226,14 +245,17 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
           // GNU extension.
           return ArgType::PtrTo(Ctx.LongLongTy);
         case LengthModifier::AsAllocate:
-          return ArgType::Invalid();
         case LengthModifier::AsMAllocate:
+        case LengthModifier::AsInt32:
+        case LengthModifier::AsInt3264:
           return ArgType::Invalid();
       }
 
     // Unsigned int.
     case ConversionSpecifier::oArg:
+    case ConversionSpecifier::OArg:
     case ConversionSpecifier::uArg:
+    case ConversionSpecifier::UArg:
     case ConversionSpecifier::xArg:
     case ConversionSpecifier::XArg:
       switch (LM.getKind()) {
@@ -248,6 +270,8 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
         case LengthModifier::AsLongLong:
         case LengthModifier::AsQuad:
           return ArgType::PtrTo(Ctx.UnsignedLongLongTy);
+        case LengthModifier::AsInt64:
+          return ArgType::PtrTo(ArgType(Ctx.UnsignedLongLongTy, "unsigned __int64"));
         case LengthModifier::AsIntMax:
           return ArgType::PtrTo(ArgType(Ctx.getUIntMaxType(), "uintmax_t"));
         case LengthModifier::AsSizeT:
@@ -259,8 +283,9 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
           // GNU extension.
           return ArgType::PtrTo(Ctx.UnsignedLongLongTy);
         case LengthModifier::AsAllocate:
-          return ArgType::Invalid();
         case LengthModifier::AsMAllocate:
+        case LengthModifier::AsInt32:
+        case LengthModifier::AsInt3264:
           return ArgType::Invalid();
       }
 
@@ -292,7 +317,7 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
         case LengthModifier::None:
           return ArgType::PtrTo(ArgType::AnyCharTy);
         case LengthModifier::AsLong:
-          return ArgType::PtrTo(ArgType(Ctx.getWCharType(), "wchar_t"));
+          return ArgType::PtrTo(ArgType(Ctx.getWideCharType(), "wchar_t"));
         case LengthModifier::AsAllocate:
         case LengthModifier::AsMAllocate:
           return ArgType::PtrTo(ArgType::CStrTy);
@@ -304,7 +329,7 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
       // FIXME: Mac OS X specific?
       switch (LM.getKind()) {
         case LengthModifier::None:
-          return ArgType::PtrTo(ArgType(Ctx.getWCharType(), "wchar_t"));
+          return ArgType::PtrTo(ArgType(Ctx.getWideCharType(), "wchar_t"));
         case LengthModifier::AsAllocate:
         case LengthModifier::AsMAllocate:
           return ArgType::PtrTo(ArgType(ArgType::WCStrTy, "wchar_t *"));
@@ -330,6 +355,8 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
         case LengthModifier::AsLongLong:
         case LengthModifier::AsQuad:
           return ArgType::PtrTo(Ctx.LongLongTy);
+        case LengthModifier::AsInt64:
+          return ArgType::PtrTo(ArgType(Ctx.LongLongTy, "__int64"));
         case LengthModifier::AsIntMax:
           return ArgType::PtrTo(ArgType(Ctx.getIntMaxType(), "intmax_t"));
         case LengthModifier::AsSizeT:
@@ -340,6 +367,8 @@ ArgType ScanfSpecifier::getArgType(ASTContext &Ctx) const {
           return ArgType(); // FIXME: Is this a known extension?
         case LengthModifier::AsAllocate:
         case LengthModifier::AsMAllocate:
+        case LengthModifier::AsInt32:
+        case LengthModifier::AsInt3264:
           return ArgType::Invalid();
         }
 
@@ -426,13 +455,15 @@ bool ScanfSpecifier::fixType(QualType QT, const LangOptions &LangOpt,
   }
 
   // Handle size_t, ptrdiff_t, etc. that have dedicated length modifiers in C99.
-  if (isa<TypedefType>(PT) && (LangOpt.C99 || LangOpt.CPlusPlus0x))
+  if (isa<TypedefType>(PT) && (LangOpt.C99 || LangOpt.CPlusPlus11))
     namedTypeToLengthModifier(PT, LM);
 
   // If fixing the length modifier was enough, we are done.
-  const analyze_scanf::ArgType &AT = getArgType(Ctx);
-  if (hasValidLengthModifier() && AT.isValid() && AT.matchesType(Ctx, QT))
-    return true;
+  if (hasValidLengthModifier(Ctx.getTargetInfo())) {
+    const analyze_scanf::ArgType &AT = getArgType(Ctx);
+    if (AT.isValid() && AT.matchesType(Ctx, QT))
+      return true;
+  }
 
   // Figure out the conversion specifier.
   if (PT->isRealFloatingType())
@@ -463,18 +494,19 @@ void ScanfSpecifier::toString(raw_ostream &os) const {
 bool clang::analyze_format_string::ParseScanfString(FormatStringHandler &H,
                                                     const char *I,
                                                     const char *E,
-                                                    const LangOptions &LO) {
+                                                    const LangOptions &LO,
+                                                    const TargetInfo &Target) {
   
   unsigned argIndex = 0;
   
   // Keep looking for a format specifier until we have exhausted the string.
   while (I != E) {
     const ScanfSpecifierResult &FSR = ParseScanfSpecifier(H, I, E, argIndex,
-                                                          LO);
+                                                          LO, Target);
     // Did a fail-stop error of any kind occur when parsing the specifier?
     // If so, don't do any more processing.
     if (FSR.shouldStop())
-      return true;;
+      return true;
       // Did we exhaust the string or encounter an error that
       // we can recover from?
     if (!FSR.hasValue())

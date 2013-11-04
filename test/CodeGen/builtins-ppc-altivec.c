@@ -41,7 +41,7 @@ int res_i;
 int res_ui;
 int res_f;
 
-// CHECK: define void @test1
+// CHECK-LABEL: define void @test1
 void test1() {
 
   /* vec_abs */
@@ -333,7 +333,7 @@ void test1() {
 
 }
 
-// CHECK: define void @test2
+// CHECK-LABEL: define void @test2
 void test2() {
   /* vec_avg */
   res_vsc = vec_avg(vsc, vsc);                  // CHECK: @llvm.ppc.altivec.vavgsb
@@ -371,7 +371,7 @@ void test2() {
   res_vbi = vec_vcmpgefp(vf, vf);               // CHECK: @llvm.ppc.altivec.vcmpgefp
 }
 
-// CHECK: define void @test5
+// CHECK-LABEL: define void @test5
 void test5() {
   
   /* vec_cmpgt */
@@ -394,7 +394,7 @@ void test5() {
   res_vbi = vec_cmple(vf, vf);                  // CHECK: @llvm.ppc.altivec.vcmpgefp
 }
 
-// CHECK: define void @test6
+// CHECK-LABEL: define void @test6
 void test6() {
   /* vec_cmplt */
   res_vbc = vec_cmplt(vsc, vsc);                // CHECK: @llvm.ppc.altivec.vcmpgtsb
@@ -484,20 +484,20 @@ void test6() {
   res_vf  = vec_lvx(0, &param_f);               // CHECK: @llvm.ppc.altivec.lvx
 
   /* vec_lde */
-  res_vsc = vec_lde(0, &vsc);                   // CHECK: @llvm.ppc.altivec.lvebx
-  res_vuc = vec_lde(0, &vuc);                   // CHECK: @llvm.ppc.altivec.lvebx
-  res_vs  = vec_lde(0, &vs);                    // CHECK: @llvm.ppc.altivec.lvehx
-  res_vus = vec_lde(0, &vus);                   // CHECK: @llvm.ppc.altivec.lvehx
-  res_vi  = vec_lde(0, &vi);                    // CHECK: @llvm.ppc.altivec.lvewx
-  res_vui = vec_lde(0, &vui);                   // CHECK: @llvm.ppc.altivec.lvewx
-  res_vf  = vec_lde(0, &vf);                    // CHECK: @llvm.ppc.altivec.lvewx
-  res_vsc = vec_lvebx(0, &vsc);                 // CHECK: @llvm.ppc.altivec.lvebx
-  res_vuc = vec_lvebx(0, &vuc);                 // CHECK: @llvm.ppc.altivec.lvebx
-  res_vs  = vec_lvehx(0, &vs);                  // CHECK: @llvm.ppc.altivec.lvehx
-  res_vus = vec_lvehx(0, &vus);                 // CHECK: @llvm.ppc.altivec.lvehx
-  res_vi  = vec_lvewx(0, &vi);                  // CHECK: @llvm.ppc.altivec.lvewx
-  res_vui = vec_lvewx(0, &vui);                 // CHECK: @llvm.ppc.altivec.lvewx
-  res_vf  = vec_lvewx(0, &vf);                  // CHECK: @llvm.ppc.altivec.lvewx
+  res_vsc = vec_lde(0, &param_sc);              // CHECK: @llvm.ppc.altivec.lvebx
+  res_vuc = vec_lde(0, &param_uc);              // CHECK: @llvm.ppc.altivec.lvebx
+  res_vs  = vec_lde(0, &param_s);               // CHECK: @llvm.ppc.altivec.lvehx
+  res_vus = vec_lde(0, &param_us);              // CHECK: @llvm.ppc.altivec.lvehx
+  res_vi  = vec_lde(0, &param_i);               // CHECK: @llvm.ppc.altivec.lvewx
+  res_vui = vec_lde(0, &param_ui);              // CHECK: @llvm.ppc.altivec.lvewx
+  res_vf  = vec_lde(0, &param_f);               // CHECK: @llvm.ppc.altivec.lvewx
+  res_vsc = vec_lvebx(0, &param_sc);            // CHECK: @llvm.ppc.altivec.lvebx
+  res_vuc = vec_lvebx(0, &param_uc);            // CHECK: @llvm.ppc.altivec.lvebx
+  res_vs  = vec_lvehx(0, &param_s);             // CHECK: @llvm.ppc.altivec.lvehx
+  res_vus = vec_lvehx(0, &param_us);            // CHECK: @llvm.ppc.altivec.lvehx
+  res_vi  = vec_lvewx(0, &param_i);             // CHECK: @llvm.ppc.altivec.lvewx
+  res_vui = vec_lvewx(0, &param_ui);            // CHECK: @llvm.ppc.altivec.lvewx
+  res_vf  = vec_lvewx(0, &param_f);             // CHECK: @llvm.ppc.altivec.lvewx
 
   /* vec_ldl */
   res_vsc = vec_ldl(0, &vsc);                   // CHECK: @llvm.ppc.altivec.lvxl
@@ -3055,7 +3055,7 @@ void test6() {
 }
 
 /* ------------------------------ Relational Operators ------------------------------ */
-// CHECK: define void @test7
+// CHECK-LABEL: define void @test7
 void test7() {
   vector signed char vsc1 = (vector signed char)(-1);
   vector signed char vsc2 = (vector signed char)(-2);

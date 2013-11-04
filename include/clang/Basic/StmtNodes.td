@@ -27,6 +27,7 @@ def DeclStmt  : Stmt;
 def SwitchCase : Stmt<1>;
 def CaseStmt : DStmt<SwitchCase>;
 def DefaultStmt : DStmt<SwitchCase>;
+def CapturedStmt : Stmt;
 
 // Asm statements
 def AsmStmt : Stmt<1>;
@@ -107,7 +108,9 @@ def CXXNullPtrLiteralExpr : DStmt<Expr>;
 def CXXThisExpr : DStmt<Expr>;
 def CXXThrowExpr : DStmt<Expr>;
 def CXXDefaultArgExpr : DStmt<Expr>;
+def CXXDefaultInitExpr : DStmt<Expr>;
 def CXXScalarValueInitExpr : DStmt<Expr>;
+def CXXStdInitializerListExpr : DStmt<Expr>;
 def CXXNewExpr : DStmt<Expr>;
 def CXXDeleteExpr : DStmt<Expr>;
 def CXXPseudoDestructorExpr : DStmt<Expr>;
@@ -131,6 +134,7 @@ def PackExpansionExpr : DStmt<Expr>;
 def SizeOfPackExpr : DStmt<Expr>;
 def SubstNonTypeTemplateParmExpr : DStmt<Expr>;
 def SubstNonTypeTemplateParmPackExpr : DStmt<Expr>;
+def FunctionParmPackExpr : DStmt<Expr>;
 def MaterializeTemporaryExpr : DStmt<Expr>;
 def LambdaExpr : DStmt<Expr>;
 
@@ -158,10 +162,12 @@ def CUDAKernelCallExpr : DStmt<CallExpr>;
 
 // Clang Extensions.
 def ShuffleVectorExpr : DStmt<Expr>;
+def ConvertVectorExpr : DStmt<Expr>;
 def BlockExpr : DStmt<Expr>;
 def OpaqueValueExpr : DStmt<Expr>;
 
 // Microsoft Extensions.
+def MSPropertyRefExpr : DStmt<Expr>;
 def CXXUuidofExpr : DStmt<Expr>; 
 def SEHTryStmt : Stmt;
 def SEHExceptStmt : Stmt;
@@ -170,3 +176,7 @@ def MSDependentExistsStmt : Stmt;
 
 // OpenCL Extensions.
 def AsTypeExpr : DStmt<Expr>;
+
+// OpenMP Directives.
+def OMPExecutableDirective : Stmt<1>;
+def OMPParallelDirective : DStmt<OMPExecutableDirective>;

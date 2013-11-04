@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -analyze -analyzer-checker=core -std=c++11 -verify %s
+// expected-no-diagnostics
 
 // radar://11485149, PR12871
 class PlotPoint {
@@ -63,4 +64,33 @@ bool begin(double *it) {
   typedef bool type[25];
   bool *a = reinterpret_cast<type &>(*( reinterpret_cast<char *>( it )));
   return *a;
+}
+
+// radar://14164698 Don't crash on "assuming" a ComoundVal.
+class JSONWireProtocolInputStream {
+public:
+  virtual ~JSONWireProtocolInputStream();
+};
+class JSONWireProtocolReader {
+public:
+  JSONWireProtocolReader(JSONWireProtocolInputStream& istream)
+  : _istream{istream} {} // On evaluating a bind here,
+                         // the dereference checker issues an assume on a CompoundVal.
+~JSONWireProtocolReader();
+private:
+JSONWireProtocolInputStream& _istream;
+};
+class SocketWireProtocolStream : public JSONWireProtocolInputStream {
+};
+void test() {
+  SocketWireProtocolStream stream{};
+  JSONWireProtocolReader reader{stream};
+}
+
+// This crashed because the analyzer did not understand AttributedStmts.
+void fallthrough() {
+  switch (1) {
+    case 1:
+      [[clang::fallthrough]];
+  }
 }

@@ -103,8 +103,8 @@ void ExprEngine::VisitObjCForCollectionStmt(const ObjCForCollectionStmt *S,
     // Handle the case where the container has no elements.
     SVal FalseV = svalBuilder.makeTruthVal(0);
     ProgramStateRef noElems = state->BindExpr(S, LCtx, FalseV);
-    
-    if (loc::MemRegionVal *MV = dyn_cast<loc::MemRegionVal>(&elementV))
+
+    if (Optional<loc::MemRegionVal> MV = elementV.getAs<loc::MemRegionVal>())
       if (const TypedValueRegion *R = 
           dyn_cast<TypedValueRegion>(MV->getRegion())) {
         // FIXME: The proper thing to do is to really iterate over the
@@ -130,14 +130,6 @@ void ExprEngine::VisitObjCForCollectionStmt(const ObjCForCollectionStmt *S,
   // Finally, run any custom checkers.
   // FIXME: Eventually all pre- and post-checks should live in VisitStmt.
   getCheckerManager().runCheckersForPostStmt(Dst, Tmp, S, *this);
-}
-
-static bool isSubclass(const ObjCInterfaceDecl *Class, IdentifierInfo *II) {
-  if (!Class)
-    return false;
-  if (Class->getIdentifier() == II)
-    return true;
-  return isSubclass(Class->getSuperClass(), II);
 }
 
 void ExprEngine::VisitObjCMessage(const ObjCMessageExpr *ME,
@@ -169,8 +161,9 @@ void ExprEngine::VisitObjCMessage(const ObjCMessageExpr *ME,
       SVal recVal = UpdatedMsg->getReceiverSVal();
       if (!recVal.isUndef()) {
         // Bifurcate the state into nil and non-nil ones.
-        DefinedOrUnknownSVal receiverVal = cast<DefinedOrUnknownSVal>(recVal);
-        
+        DefinedOrUnknownSVal receiverVal =
+            recVal.castAs<DefinedOrUnknownSVal>();
+
         ProgramStateRef notNilState, nilState;
         llvm::tie(notNilState, nilState) = State->assume(receiverVal);
         
@@ -184,68 +177,30 @@ void ExprEngine::VisitObjCMessage(const ObjCMessageExpr *ME,
         
         // Check if the "raise" message was sent.
         assert(notNilState);
-        if (Msg->getSelector() == RaiseSel) {
+        if (ObjCNoRet.isImplicitNoReturn(ME)) {
           // If we raise an exception, for now treat it as a sink.
           // Eventually we will want to handle exceptions properly.
-          Bldr.generateSink(currStmt, Pred, State);
+          Bldr.generateSink(ME, Pred, State);
           continue;
         }
         
         // Generate a transition to non-Nil state.
-        if (notNilState != State)
-          Pred = Bldr.generateNode(currStmt, Pred, notNilState);
+        if (notNilState != State) {
+          Pred = Bldr.generateNode(ME, Pred, notNilState);
+          assert(Pred && "Should have cached out already!");
+        }
       }
     } else {
-      // Check for special class methods.
-      if (const ObjCInterfaceDecl *Iface = Msg->getReceiverInterface()) {
-        if (!NSExceptionII) {
-          ASTContext &Ctx = getContext();
-          NSExceptionII = &Ctx.Idents.get("NSException");
-        }
-        
-        if (isSubclass(Iface, NSExceptionII)) {
-          enum { NUM_RAISE_SELECTORS = 2 };
-          
-          // Lazily create a cache of the selectors.
-          if (!NSExceptionInstanceRaiseSelectors) {
-            ASTContext &Ctx = getContext();
-            NSExceptionInstanceRaiseSelectors =
-              new Selector[NUM_RAISE_SELECTORS];
-            SmallVector<IdentifierInfo*, NUM_RAISE_SELECTORS> II;
-            unsigned idx = 0;
-            
-            // raise:format:
-            II.push_back(&Ctx.Idents.get("raise"));
-            II.push_back(&Ctx.Idents.get("format"));
-            NSExceptionInstanceRaiseSelectors[idx++] =
-              Ctx.Selectors.getSelector(II.size(), &II[0]);
-            
-            // raise:format:arguments:
-            II.push_back(&Ctx.Idents.get("arguments"));
-            NSExceptionInstanceRaiseSelectors[idx++] =
-              Ctx.Selectors.getSelector(II.size(), &II[0]);
-          }
-          
-          Selector S = Msg->getSelector();
-          bool RaisesException = false;
-          for (unsigned i = 0; i < NUM_RAISE_SELECTORS; ++i) {
-            if (S == NSExceptionInstanceRaiseSelectors[i]) {
-              RaisesException = true;
-              break;
-            }
-          }
-          if (RaisesException) {
-            // If we raise an exception, for now treat it as a sink.
-            // Eventually we will want to handle exceptions properly.
-            Bldr.generateSink(currStmt, Pred, Pred->getState());
-            continue;
-          }
-
-        }
+      // Check for special class methods that are known to not return
+      // and that we should treat as a sink.
+      if (ObjCNoRet.isImplicitNoReturn(ME)) {
+        // If we raise an exception, for now treat it as a sink.
+        // Eventually we will want to handle exceptions properly.
+        Bldr.generateSink(ME, Pred, Pred->getState());
+        continue;
       }
     }
 
-    // Evaluate the call.
     defaultEvalCall(Bldr, Pred, *UpdatedMsg);
   }
   

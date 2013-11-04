@@ -1,4 +1,4 @@
-//===- IndexingContext.h - Higher level API functions ------------------------===//
+//===- IndexingContext.h - Higher level API functions -----------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,16 +7,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Index_Internal.h"
 #include "CXCursor.h"
-
-#include "clang/AST/DeclObjC.h"
+#include "Index_Internal.h"
 #include "clang/AST/DeclGroup.h"
+#include "clang/AST/DeclObjC.h"
 #include "llvm/ADT/DenseSet.h"
 #include <deque>
 
 namespace clang {
   class FileEntry;
+  class MSPropertyDecl;
   class ObjCPropertyDecl;
   class ClassTemplateDecl;
   class FunctionTemplateDecl;
@@ -89,6 +89,7 @@ struct DeclInfo : public CXIdxDeclInfo {
     attributes = 0;
     numAttributes = 0;
     declAsContainer = semanticContainer = lexicalContainer = 0;
+    flags = 0;
   }
   DeclInfo(DInfoKind K,
            bool isRedeclaration, bool isDefinition, bool isContainer)
@@ -99,9 +100,8 @@ struct DeclInfo : public CXIdxDeclInfo {
     attributes = 0;
     numAttributes = 0;
     declAsContainer = semanticContainer = lexicalContainer = 0;
+    flags = 0;
   }
-
-  static bool classof(const DeclInfo *) { return true; }
 };
 
 struct ObjCContainerDeclInfo : public DeclInfo {
@@ -126,7 +126,6 @@ struct ObjCContainerDeclInfo : public DeclInfo {
   static bool classof(const DeclInfo *D) {
     return Info_ObjCContainer <= D->Kind && D->Kind <= Info_ObjCCategory;
   }
-  static bool classof(const ObjCContainerDeclInfo *D) { return true; }
 
 private:
   void init(bool isForwardRef, bool isImplementation) {
@@ -152,7 +151,6 @@ struct ObjCInterfaceDeclInfo : public ObjCContainerDeclInfo {
   static bool classof(const DeclInfo *D) {
     return D->Kind == Info_ObjCInterface;
   }
-  static bool classof(const ObjCInterfaceDeclInfo *D) { return true; }
 };
 
 struct ObjCProtocolDeclInfo : public ObjCContainerDeclInfo {
@@ -167,7 +165,6 @@ struct ObjCProtocolDeclInfo : public ObjCContainerDeclInfo {
   static bool classof(const DeclInfo *D) {
     return D->Kind == Info_ObjCProtocol;
   }
-  static bool classof(const ObjCProtocolDeclInfo *D) { return true; }
 };
 
 struct ObjCCategoryDeclInfo : public ObjCContainerDeclInfo {
@@ -183,7 +180,6 @@ struct ObjCCategoryDeclInfo : public ObjCContainerDeclInfo {
   static bool classof(const DeclInfo *D) {
     return D->Kind == Info_ObjCCategory;
   }
-  static bool classof(const ObjCCategoryDeclInfo *D) { return true; }
 };
 
 struct ObjCPropertyDeclInfo : public DeclInfo {
@@ -197,7 +193,6 @@ struct ObjCPropertyDeclInfo : public DeclInfo {
   static bool classof(const DeclInfo *D) {
     return D->Kind == Info_ObjCProperty;
   }
-  static bool classof(const ObjCPropertyDeclInfo *D) { return true; }
 };
 
 struct CXXClassDeclInfo : public DeclInfo {
@@ -209,7 +204,6 @@ struct CXXClassDeclInfo : public DeclInfo {
   static bool classof(const DeclInfo *D) {
     return D->Kind == Info_CXXClass;
   }
-  static bool classof(const CXXClassDeclInfo *D) { return true; }
 };
 
 struct AttrInfo : public CXIdxAttrInfo {
@@ -221,8 +215,6 @@ struct AttrInfo : public CXIdxAttrInfo {
     loc = Loc;
     this->A = A;
   }
-
-  static bool classof(const AttrInfo *) { return true; }
 };
 
 struct IBOutletCollectionInfo : public AttrInfo {
@@ -240,7 +232,6 @@ struct IBOutletCollectionInfo : public AttrInfo {
   static bool classof(const AttrInfo *A) {
     return A->kind == CXIdxAttr_IBOutletCollection;
   }
-  static bool classof(const IBOutletCollectionInfo *D) { return true; }
 };
 
 class AttrListInfo {
@@ -251,8 +242,8 @@ class AttrListInfo {
   SmallVector<CXIdxAttrInfo *, 2> CXAttrs;
   unsigned ref_cnt;
 
-  AttrListInfo(const AttrListInfo&); // DO NOT IMPLEMENT
-  void operator=(const AttrListInfo&); // DO NOT IMPLEMENT
+  AttrListInfo(const AttrListInfo &) LLVM_DELETED_FUNCTION;
+  void operator=(const AttrListInfo &) LLVM_DELETED_FUNCTION;
 public:
   AttrListInfo(const Decl *D, IndexingContext &IdxCtx);
 
@@ -279,14 +270,6 @@ public:
   }
 };
 
-struct RefFileOccurence {
-  const FileEntry *File;
-  const Decl *Dcl;
-
-  RefFileOccurence(const FileEntry *File, const Decl *Dcl)
-    : File(File), Dcl(Dcl) { }
-};
-
 class IndexingContext {
   ASTContext *Ctx;
   CXClientData ClientData;
@@ -303,6 +286,7 @@ class IndexingContext {
   ContainerMapTy ContainerMap;
   EntityMapTy EntityMap;
 
+  typedef std::pair<const FileEntry *, const Decl *> RefFileOccurence;
   llvm::DenseSet<RefFileOccurence> RefFileOccurences;
 
   std::deque<DeclGroupRef> TUDeclsInObjCContainer;
@@ -370,6 +354,8 @@ public:
     return IndexOptions & CXIndexOpt_IndexImplicitTemplateInstantiations;
   }
 
+  static bool isFunctionLocalDecl(const Decl *D);
+
   bool shouldAbort();
 
   bool hasDiagnosticCallback() const { return CB.diagnostic; }
@@ -378,7 +364,10 @@ public:
 
   void ppIncludedFile(SourceLocation hashLoc,
                       StringRef filename, const FileEntry *File,
-                      bool isImport, bool isAngled);
+                      bool isImport, bool isAngled, bool isModuleImport);
+
+  void importedModule(const ImportDecl *ImportD);
+  void importedPCH(const FileEntry *File);
 
   void startedTranslationUnit();
 
@@ -408,6 +397,8 @@ public:
   bool handleVar(const VarDecl *D);
 
   bool handleField(const FieldDecl *D);
+
+  bool handleMSProperty(const MSPropertyDecl *D);
 
   bool handleEnumerator(const EnumConstantDecl *D);
 
@@ -451,7 +442,7 @@ public:
 
   bool isNotFromSourceFile(SourceLocation Loc) const;
 
-  void indexTopLevelDecl(Decl *D);
+  void indexTopLevelDecl(const Decl *D);
   void indexTUDeclsInObjCContainer();
   void indexDeclGroupRef(DeclGroupRef DG);
 
@@ -499,7 +490,7 @@ private:
   void getContainerInfo(const DeclContext *DC, ContainerInfo &ContInfo);
 
   CXCursor getCursor(const Decl *D) {
-    return cxcursor::MakeCXCursor(const_cast<Decl*>(D), CXTU);
+    return cxcursor::MakeCXCursor(D, CXTU);
   }
 
   CXCursor getRefCursor(const NamedDecl *D, SourceLocation Loc);
@@ -526,29 +517,3 @@ inline T *ScratchAlloc::allocate() {
 }
 
 }} // end clang::cxindex
-
-namespace llvm {
-  /// Define DenseMapInfo so that FileID's can be used as keys in DenseMap and
-  /// DenseSets.
-  template <>
-  struct DenseMapInfo<clang::cxindex::RefFileOccurence> {
-    static inline clang::cxindex::RefFileOccurence getEmptyKey() {
-      return clang::cxindex::RefFileOccurence(0, 0);
-    }
-
-    static inline clang::cxindex::RefFileOccurence getTombstoneKey() {
-      return clang::cxindex::RefFileOccurence((const clang::FileEntry *)~0,
-                                              (const clang::Decl *)~0);
-    }
-
-    static unsigned getHashValue(clang::cxindex::RefFileOccurence S) {
-      typedef std::pair<const clang::FileEntry *, const clang::Decl *> PairTy;
-      return DenseMapInfo<PairTy>::getHashValue(PairTy(S.File, S.Dcl));
-    }
-
-    static bool isEqual(clang::cxindex::RefFileOccurence LHS,
-                        clang::cxindex::RefFileOccurence RHS) {
-      return LHS.File == RHS.File && LHS.Dcl == RHS.Dcl;
-    }
-  };
-}

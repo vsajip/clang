@@ -60,9 +60,9 @@ def CallAndMessageChecker : Checker<"CallAndMessage">,
   HelpText<"Check for logical errors for function calls and Objective-C message expressions (e.g., uninitialized arguments, null function pointers)">,
   DescFile<"CallAndMessageChecker.cpp">;
 
-def AttrNonNullChecker : Checker<"AttributeNonNull">,
-  HelpText<"Check for null pointers passed as arguments to a function whose arguments are marked with the 'nonnull' attribute">,
-  DescFile<"AttrNonNullChecker.cpp">;
+def NonNullParamChecker : Checker<"NonNullParamChecker">,
+  HelpText<"Check for null pointers passed as arguments to a function whose arguments are references or marked with the 'nonnull' attribute">,
+  DescFile<"NonNullParamChecker.cpp">;
 
 def VLASizeChecker : Checker<"VLASize">,
   HelpText<"Check for declarations of VLA of undefined or zero size">,
@@ -116,7 +116,7 @@ def SizeofPointerChecker : Checker<"SizeofPtr">,
   HelpText<"Warn about unintended use of sizeof() on pointer expressions">,
   DescFile<"CheckSizeofPointer.cpp">;
 
-} // end "core.experimental"
+} // end "alpha.core"
 
 //===----------------------------------------------------------------------===//
 // Evaluate "builtin" functions.
@@ -166,13 +166,25 @@ def ReturnUndefChecker : Checker<"UndefReturn">,
 // C++ checkers.
 //===----------------------------------------------------------------------===//
 
+let ParentPackage = Cplusplus in {
+
+def NewDeleteChecker : Checker<"NewDelete">,
+  HelpText<"Check for double-free and use-after-free problems. Traces memory managed by new/delete.">, 
+  DescFile<"MallocChecker.cpp">;
+
+} // end: "cplusplus"
+
 let ParentPackage = CplusplusAlpha in {
 
 def VirtualCallChecker : Checker<"VirtualCall">,
   HelpText<"Check virtual function calls during construction or destruction">, 
   DescFile<"VirtualCallChecker.cpp">;
 
-} // end: "cplusplus.experimental"
+def NewDeleteLeaksChecker : Checker<"NewDeleteLeaks">,
+  HelpText<"Check for memory leaks. Traces memory managed by new/delete.">, 
+  DescFile<"MallocChecker.cpp">;
+
+} // end: "alpha.cplusplus"
 
 //===----------------------------------------------------------------------===//
 // Deadcode checkers.
@@ -195,7 +207,7 @@ def UnreachableCodeChecker : Checker<"UnreachableCode">,
   HelpText<"Check unreachable code">,
   DescFile<"UnreachableCodeChecker.cpp">;
 
-} // end "deadcode.experimental"
+} // end "alpha.deadcode"
 
 //===----------------------------------------------------------------------===//
 // Security checkers.
@@ -251,7 +263,7 @@ def MallocOverflowSecurityChecker : Checker<"MallocOverflow">,
   HelpText<"Check for overflows in the arguments to malloc()">,
   DescFile<"MallocOverflowSecurityChecker.cpp">;
 
-} // end "security.experimental"
+} // end "alpha.security"
 
 //===----------------------------------------------------------------------===//
 // Taint checkers.
@@ -263,7 +275,7 @@ def GenericTaintChecker : Checker<"TaintPropagation">,
   HelpText<"Generate taint information used by other checkers">,
   DescFile<"GenericTaintChecker.cpp">;
 
-} // end "experimental.security.taint"
+} // end "alpha.security.taint"
 
 //===----------------------------------------------------------------------===//
 // Unix API checkers.
@@ -276,12 +288,16 @@ def UnixAPIChecker : Checker<"API">,
   DescFile<"UnixAPIChecker.cpp">;
 
 def MallocPessimistic : Checker<"Malloc">,
-  HelpText<"Check for memory leaks, double free, and use-after-free problems.">,
+  HelpText<"Check for memory leaks, double free, and use-after-free problems. Traces memory managed by malloc()/free().">,
   DescFile<"MallocChecker.cpp">;
   
 def MallocSizeofChecker : Checker<"MallocSizeof">,
   HelpText<"Check for dubious malloc arguments involving sizeof">,
   DescFile<"MallocSizeofChecker.cpp">;
+
+def MismatchedDeallocatorChecker : Checker<"MismatchedDeallocator">,
+  HelpText<"Check for mismatched deallocators.">,
+  DescFile<"MallocChecker.cpp">;
   
 } // end "unix"
 
@@ -292,7 +308,7 @@ def ChrootChecker : Checker<"Chroot">,
   DescFile<"ChrootChecker.cpp">;
 
 def MallocOptimistic : Checker<"MallocWithAnnotations">,
-  HelpText<"Check for memory leaks, double free, and use-after-free problems. Assumes that all user-defined functions which might free a pointer are annotated.">,
+  HelpText<"Check for memory leaks, double free, and use-after-free problems. Traces memory managed by malloc()/free(). Assumes that all user-defined functions which might free a pointer are annotated.">,
   DescFile<"MallocChecker.cpp">;
 
 def PthreadLockChecker : Checker<"PthreadLock">,
@@ -303,7 +319,11 @@ def StreamChecker : Checker<"Stream">,
   HelpText<"Check stream handling functions">,
   DescFile<"StreamChecker.cpp">;
 
-} // end "unix.experimental"
+def SimpleStreamChecker : Checker<"SimpleStream">,
+  HelpText<"Check for misuses of stream APIs">,
+  DescFile<"SimpleStreamChecker.cpp">;
+
+} // end "alpha.unix"
 
 let ParentPackage = CString in {
 
@@ -339,20 +359,15 @@ let ParentPackage = OSX in {
 
 def MacOSXAPIChecker : Checker<"API">,
   InPackage<OSX>,
-  HelpText<"Check for proper uses of various Mac OS X APIs">,
+  HelpText<"Check for proper uses of various Apple APIs">,
   DescFile<"MacOSXAPIChecker.cpp">;
-
-def OSAtomicChecker : Checker<"AtomicCAS">,
-  InPackage<OSX>,
-  HelpText<"Evaluate calls to OSAtomic functions">,
-  DescFile<"OSAtomicChecker.cpp">;
 
 def MacOSKeychainAPIChecker : Checker<"SecKeychainAPI">,
   InPackage<OSX>,
   HelpText<"Check for proper uses of Secure Keychain APIs">,
   DescFile<"MacOSKeychainAPIChecker.cpp">;
 
-} // end "macosx"
+} // end "osx"
 
 let ParentPackage = Cocoa in {
 
@@ -413,7 +428,27 @@ def ObjCDeallocChecker : Checker<"Dealloc">,
   HelpText<"Warn about Objective-C classes that lack a correct implementation of -dealloc">,
   DescFile<"CheckObjCDealloc.cpp">;
 
-} // end "cocoa.alpha"
+def InstanceVariableInvalidation : Checker<"InstanceVariableInvalidation">,
+  HelpText<"Check that the invalidatable instance variables are invalidated in the methods annotated with objc_instance_variable_invalidator">,
+  DescFile<"IvarInvalidationChecker.cpp">;
+
+def MissingInvalidationMethod : Checker<"MissingInvalidationMethod">,
+  HelpText<"Check that the invalidation methods are present in classes that contain invalidatable instance variables">,
+  DescFile<"IvarInvalidationChecker.cpp">;
+
+def DirectIvarAssignment : Checker<"DirectIvarAssignment">,
+  HelpText<"Check for direct assignments to instance variables">,
+  DescFile<"DirectIvarAssignment.cpp">;
+
+def DirectIvarAssignmentForAnnotatedFunctions : Checker<"DirectIvarAssignmentForAnnotatedFunctions">,
+  HelpText<"Check for direct assignments to instance variables in the methods annotated with objc_no_direct_instance_variable_assignment">,
+  DescFile<"DirectIvarAssignment.cpp">;
+
+def ObjCSuperCallChecker : Checker<"MissingSuperCall">,
+  HelpText<"Warn about Objective-C methods that lack a necessary call to super">,
+  DescFile<"ObjCMissingSuperCallChecker.cpp">;
+
+} // end "alpha.osx.cocoa"
 
 let ParentPackage = CoreFoundation in {
 
@@ -422,7 +457,7 @@ def CFNumberCreateChecker : Checker<"CFNumber">,
   DescFile<"BasicObjCFoundationChecks.cpp">;
 
 def CFRetainReleaseChecker : Checker<"CFRetainRelease">,
-  HelpText<"Check for null arguments to CFRetain/CFRelease">,
+  HelpText<"Check for null arguments to CFRetain/CFRelease/CFMakeCollectable">,
   DescFile<"BasicObjCFoundationChecks.cpp">;
 
 def CFErrorChecker : Checker<"CFError">,
@@ -479,6 +514,10 @@ def CallGraphDumper : Checker<"DumpCallGraph">,
   HelpText<"Display Call Graph">,
   DescFile<"DebugCheckers.cpp">;
 
+def ConfigDumper : Checker<"ConfigDumper">,
+  HelpText<"Dump config table">,
+  DescFile<"DebugCheckers.cpp">;
+
 def TraversalDumper : Checker<"DumpTraversal">,
   HelpText<"Print branch conditions as they are traversed by the engine">,
   DescFile<"TraversalChecker.cpp">;
@@ -499,5 +538,8 @@ def ExprInspectionChecker : Checker<"ExprInspection">,
   HelpText<"Check the analyzer's understanding of expressions">,
   DescFile<"ExprInspectionChecker.cpp">;
 
-} // end "debug"
+def ExplodedGraphViewer : Checker<"ViewExplodedGraph">,
+  HelpText<"View Exploded Graphs using GraphViz">,
+  DescFile<"DebugCheckers.cpp">;
 
+} // end "debug"

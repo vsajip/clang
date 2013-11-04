@@ -1,5 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -std=c++11 -Wc++98-compat -verify %s
-// RUN: %clang_cc1 -fsyntax-only -std=c++11 %s
+// RUN: %clang_cc1 -fsyntax-only -std=c++1y -Wc++98-compat -verify %s -DCXX1YCOMPAT
 
 namespace std {
   struct type_info;
@@ -8,6 +8,8 @@ namespace std {
     initializer_list(T*, size_t);
     T *p;
     size_t n;
+    T *begin();
+    T *end();
   };
 }
 
@@ -20,7 +22,7 @@ class Variadic2 {};
 template<int ...I>  // expected-warning {{variadic templates are incompatible with C++98}}
 class Variadic3 {};
 
-int alignas(8) with_alignas; // expected-warning {{'alignas' is incompatible with C++98}}
+alignas(8) int with_alignas; // expected-warning {{'alignas' is incompatible with C++98}}
 int with_attribute [[ ]]; // expected-warning {{attributes are incompatible with C++98}}
 
 void Literals() {
@@ -71,7 +73,7 @@ int InitList(int i = {}) { // expected-warning {{generalized initializer lists a
   Ctor c2 = { 3.0, 4l }; // expected-warning {{constructor call from initializer list is incompatible with C++98}}
   InitListCtor ilc = { true, false }; // expected-warning {{initialization of initializer_list object is incompatible with C++98}}
   const int &r = { 0 }; // expected-warning {{reference initialized from initializer list is incompatible with C++98}}
-  struct { int a; const int &r; } rr = { 0, {{0}} }; // expected-warning {{reference initialized from initializer list is incompatible with C++98}}
+  struct { int a; const int &r; } rr = { 0, {0} }; // expected-warning {{reference initialized from initializer list is incompatible with C++98}}
   return { 0 }; // expected-warning {{generalized initializer lists are incompatible with C++98}}
 }
 struct DelayedDefaultArgumentParseInitList {
@@ -103,6 +105,13 @@ void RangeFor() {
   int xs[] = {1, 2, 3};
   for (int &a : xs) { // expected-warning {{range-based for loop is incompatible with C++98}}
   }
+  for (auto &b : {1, 2, 3}) {
+  // expected-warning@-1 {{range-based for loop is incompatible with C++98}}
+  // expected-warning@-2 {{'auto' type specifier is incompatible with C++98}}
+  // expected-warning@-3 {{initialization of initializer_list object is incompatible with C++98}}
+  // expected-warning@-4 {{reference initialized from initializer list is incompatible with C++98}}
+  }
+  struct Agg { int a, b; } const &agg = { 1, 2 }; // expected-warning {{reference initialized from initializer list is incompatible with C++98}}
 }
 
 struct InClassInit {
@@ -138,16 +147,12 @@ bool no_except_expr = noexcept(1 + 1); // expected-warning {{noexcept expression
 void *null = nullptr; // expected-warning {{'nullptr' is incompatible with C++98}}
 static_assert(true, "!"); // expected-warning {{static_assert declarations are incompatible with C++98}}
 
-// FIXME: Reintroduce this test if support for inheriting constructors is
-//        implemented.
-#if 0
 struct InhCtorBase {
   InhCtorBase(int);
 };
 struct InhCtorDerived : InhCtorBase {
-  using InhCtorBase::InhCtorBase; // xpected-warning {{inheriting constructors are incompatible with C++98}}
+  using InhCtorBase::InhCtorBase; // expected-warning {{inheriting constructors are incompatible with C++98}}
 };
-#endif
 
 struct FriendMember {
   static void MemberFn();
@@ -254,13 +259,13 @@ namespace CopyCtorIssues {
 
 namespace UnionOrAnonStructMembers {
   struct NonTrivCtor {
-    NonTrivCtor(); // expected-note 2{{user-declared constructor}}
+    NonTrivCtor(); // expected-note 2{{user-provided default constructor}}
   };
   struct NonTrivCopy {
-    NonTrivCopy(const NonTrivCopy&); // expected-note 2{{user-declared copy constructor}}
+    NonTrivCopy(const NonTrivCopy&); // expected-note 2{{user-provided copy constructor}}
   };
   struct NonTrivDtor {
-    ~NonTrivDtor(); // expected-note 2{{user-declared destructor}}
+    ~NonTrivDtor(); // expected-note 2{{user-provided destructor}}
   };
   union BadUnion {
     NonTrivCtor ntc; // expected-warning {{union member 'ntc' with a non-trivial constructor is incompatible with C++98}}
@@ -338,8 +343,8 @@ namespace NullPointerTemplateArg {
 
 namespace PR13480 {
   struct basic_iterator {
-    basic_iterator(const basic_iterator &it) {}
-    basic_iterator(basic_iterator &it) {} // expected-note {{because type 'PR13480::basic_iterator' has a user-declared copy constructor}}
+    basic_iterator(const basic_iterator &it) {} // expected-note {{because type 'PR13480::basic_iterator' has a user-provided copy constructor}}
+    basic_iterator(basic_iterator &it) {}
   };
 
   union test {
@@ -349,12 +354,12 @@ namespace PR13480 {
 
 namespace AssignOpUnion {
   struct a {
-    void operator=(const a &it) {}
-    void operator=(a &it) {} // expected-note {{because type 'AssignOpUnion::a' has a user-declared copy assignment operator}}
+    void operator=(const a &it) {} // expected-note {{because type 'AssignOpUnion::a' has a user-provided copy assignment operator}}
+    void operator=(a &it) {}
   };
 
   struct b {
-    void operator=(const b &it) {} // expected-note {{because type 'AssignOpUnion::b' has a user-declared copy assignment operator}}
+    void operator=(const b &it) {} // expected-note {{because type 'AssignOpUnion::b' has a user-provided copy assignment operator}}
   };
 
   union test1 {
@@ -364,12 +369,88 @@ namespace AssignOpUnion {
 }
 
 namespace rdar11736429 {
-  struct X {
+  struct X { // expected-note {{because type 'rdar11736429::X' has no default constructor}}
     X(const X&) = delete; // expected-warning{{deleted function definitions are incompatible with C++98}} \
-    // expected-note{{because type 'rdar11736429::X' has a user-declared constructor}}
+    // expected-note {{implicit default constructor suppressed by user-declared constructor}}
   };
 
   union S {
     X x; // expected-warning{{union member 'x' with a non-trivial constructor is incompatible with C++98}}
   };
 }
+
+template<typename T> T var = T(10);
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+template<typename T> T* var<T*> = new T();
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+template<> int var<int> = 10;
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+template int var<int>;
+float fvar = var<float>;
+
+class A {  
+  template<typename T> static T var = T(10);
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+  
+  template<typename T> static T* var<T*> = new T(); 
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+};
+
+struct B {  template<typename T> static T v; };
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+template<typename T> T B::v = T();
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+template<typename T> T* B::v<T*> = new T();
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+template<> int B::v<int> = 10;
+#ifdef CXX1YCOMPAT
+// expected-warning@-2 {{variable templates are incompatible with C++ standards before C++1y}}
+#else
+// expected-warning@-4 {{variable templates are a C++1y extension}}
+#endif
+
+template int B::v<int>;
+float fsvar = B::v<float>;
+
+#ifdef CXX1YCOMPAT
+int digit_seps = 123'456; // expected-warning {{digit separators are incompatible with C++ standards before C++1y}}
+#endif

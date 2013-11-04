@@ -252,3 +252,33 @@ namespace pr13128 {
     enum class E { C };
   };
 }
+
+namespace PR15633 {
+  template<typename T> struct A {
+    struct B {
+      enum class E : T;
+      enum class E2 : T;
+    };
+  };
+  template<typename T> enum class A<T>::B::E { e };
+  template class A<int>;
+
+  struct B { enum class E; };
+  template<typename T> enum class B::E { e }; // expected-error {{enumeration cannot be a template}}
+}
+
+namespace PR16900 {
+  enum class A;
+  A f(A a) { return -a; } // expected-error {{invalid argument type 'PR16900::A' to unary expression}}
+}
+
+namespace rdar15124329 {
+  enum class B : bool { F, T };
+
+  const rdar15124329::B T1 = B::T;
+  typedef B C;  const C T2 = B::T;
+
+  static_assert(T1 != B::F, "");
+  static_assert(T2 == B::T, "");
+}
+

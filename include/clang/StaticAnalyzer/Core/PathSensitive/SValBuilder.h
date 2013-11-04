@@ -17,11 +17,10 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Expr.h"
-#include "clang/AST/ExprCXX.h"
 #include "clang/AST/ExprObjC.h"
-#include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/BasicValueFactory.h"
 #include "clang/StaticAnalyzer/Core/PathSensitive/MemRegion.h"
+#include "clang/StaticAnalyzer/Core/PathSensitive/SVals.h"
 
 namespace clang {
 
@@ -72,14 +71,15 @@ public:
   virtual ~SValBuilder() {}
 
   bool haveSameType(const SymExpr *Sym1, const SymExpr *Sym2) {
-    return haveSameType(Sym1->getType(Context), Sym2->getType(Context));
+    return haveSameType(Sym1->getType(), Sym2->getType());
   }
 
   bool haveSameType(QualType Ty1, QualType Ty2) {
     // FIXME: Remove the second disjunct when we support symbolic
     // truncation/extension.
     return (Context.getCanonicalType(Ty1) == Context.getCanonicalType(Ty2) ||
-            (Ty1->isIntegerType() && Ty2->isIntegerType()));
+            (Ty1->isIntegralOrEnumerationType() &&
+             Ty2->isIntegralOrEnumerationType()));
   }
 
   SVal evalCast(SVal val, QualType castTy, QualType originalType);
@@ -124,7 +124,7 @@ public:
   ProgramStateManager &getStateManager() { return StateMgr; }
   
   QualType getConditionType() const {
-    return  getContext().IntTy;
+    return Context.getLangOpts().CPlusPlus ? Context.BoolTy : Context.IntTy;
   }
   
   QualType getArrayIndexType() const {
@@ -202,6 +202,12 @@ public:
   DefinedSVal getBlockPointer(const BlockDecl *block, CanQualType locTy,
                               const LocationContext *locContext);
 
+  /// Returns the value of \p E, if it can be determined in a non-path-sensitive
+  /// manner.
+  ///
+  /// If \p E is not a constant or cannot be modeled, returns \c None.
+  Optional<SVal> getConstantVal(const Expr *E);
+
   NonLoc makeCompoundVal(QualType type, llvm::ImmutableList<SVal> vals) {
     return nonloc::CompoundVal(BasicVals.getCompoundValData(type, vals));
   }
@@ -227,7 +233,7 @@ public:
         BasicVals.getValue(integer->getValue(),
                      integer->getType()->isUnsignedIntegerOrEnumerationType()));
   }
-  
+
   nonloc::ConcreteInt makeBoolVal(const ObjCBoolLiteralExpr *boolean) {
     return makeTruthVal(boolean->getValue(), boolean->getType());
   }

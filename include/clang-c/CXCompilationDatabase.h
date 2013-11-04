@@ -58,7 +58,7 @@ typedef void * CXCompileCommand;
  */
 typedef enum  {
   /*
-   * \brief No error occured
+   * \brief No error occurred
    */
   CXCompilationDatabase_NoError = 0,
 
@@ -93,6 +93,12 @@ clang_CompilationDatabase_dispose(CXCompilationDatabase);
 CINDEX_LINKAGE CXCompileCommands
 clang_CompilationDatabase_getCompileCommands(CXCompilationDatabase,
                                              const char *CompleteFileName);
+
+/**
+ * \brief Get all the compile commands in the given compilation database.
+ */
+CINDEX_LINKAGE CXCompileCommands
+clang_CompilationDatabase_getAllCompileCommands(CXCompilationDatabase);
 
 /**
  * \brief Free the given CompileCommands

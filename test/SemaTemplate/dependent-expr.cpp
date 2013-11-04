@@ -1,4 +1,5 @@
 // RUN: %clang_cc1 -fsyntax-only -verify %s
+// expected-no-diagnostics
 
 // PR5908
 template <typename Iterator>
@@ -71,3 +72,10 @@ namespace PR8795 {
     return data[0];
   }
 }
+
+template<typename T> struct CastDependentIntToPointer {
+  static void* f() {
+    T *x;
+    return ((void*)(((unsigned long)(x)|0x1ul)));
+  }
+};
