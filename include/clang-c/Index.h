@@ -2803,22 +2803,6 @@ CINDEX_LINKAGE long long clang_getConstantIntegerValue(CXCursor C);
 CINDEX_LINKAGE int clang_isInlineSpecified(CXCursor C);
 
 /**
- * \brief Return the number of arguments for a function with a
- * prototype.
- *
- * If an invalid type is passed in, -1 is returned.
- */
-CINDEX_LINKAGE int clang_getFunctionArgumentCount(CXType T);
-
-/**
- * \brief Return the type of the i-th argument for a function with a
- * prototype.
- *
- * If an invalid type or index is passed in, an invalid type is returned.
- */
-CINDEX_LINKAGE CXType clang_getFunctionArgumentType(CXType T, unsigned i);
-
-/**
  * \brief Determine whether two CXTypes represent the same type.
  *
  * \returns non-zero if the CXTypes represent the same type and

@@ -880,42 +880,4 @@ CXString clang_getDeclObjCTypeEncoding(CXCursor C) {
   return cxstring::createDup(encoding);
 }
 
-int clang_getFunctionArgumentCount(CXType CT) {
-  int result = -1;
-  QualType T = GetQualType(CT);
-  const Type * TP = T.getTypePtrOrNull();
-
-  if (TP) {
-    switch (TP->getTypeClass()) {
-    case Type::FunctionProto:
-      result = (int) cast<FunctionProtoType>(TP)->getNumArgs();
-      break;
-    default:
-      break;
-    }
-  }
-  return result;
-}
-
-CXType clang_getFunctionArgumentType(CXType CT, unsigned i) {
-  QualType T = GetQualType(CT);
-  QualType AT = QualType();
-  const Type * TP = T.getTypePtrOrNull();
-
-  if (TP) {
-    switch (TP->getTypeClass()) {
-    case Type::FunctionProto: {
-        const FunctionProtoType * FP = cast<FunctionProtoType>(TP);
-
-        if (i < FP->getNumArgs())
-          AT = FP->getArgType(i);
-      }
-      break;
-    default:
-      break;
-    }
-  }
-  return MakeCXType(AT, GetTU(CT));
-}
-
 } // end: extern "C"
