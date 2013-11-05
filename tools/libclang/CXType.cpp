@@ -880,4 +880,17 @@ CXString clang_getDeclObjCTypeEncoding(CXCursor C) {
   return cxstring::createDup(encoding);
 }
 
+CXString clang_getTemplateIdentifier(CXType CT) {
+  QualType QT = GetQualType(CT);
+  const Type * TP = QT.getTypePtrOrNull();
+
+  if ((TP == NULL) || (TP->getTypeClass() != Type::TemplateTypeParm))
+    return cxstring::createEmpty();
+  const TemplateTypeParmType * TTPT = dyn_cast<TemplateTypeParmType>(TP);
+  IdentifierInfo * info = TTPT->getIdentifier();
+  if (info == NULL)
+    return cxstring::createEmpty();
+  return cxstring::createRef(info->getName().str().c_str());
+}
+
 } // end: extern "C"

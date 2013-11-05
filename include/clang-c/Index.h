@@ -5844,6 +5844,12 @@ CINDEX_LINKAGE
 CXSourceLocation clang_indexLoc_getCXSourceLocation(CXIdxLoc loc);
 
 /**
+ * \brief Retrieve a template identifier.
+ */
+CINDEX_LINKAGE CXString clang_getTemplateIdentifier(CXType CT);
+
+
+/**
  * @}
  */
 
